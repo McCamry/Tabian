@@ -1,0 +1,63 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Plate {
+  id              String       @id @default(cuid())
+  reportType      String       // 'FOUND' (เจอ) หรือ 'LOST' (หา)
+  vehicleType     String       @default("CAR") // 'CAR', 'MOTORCYCLE', 'OTHER'
+  platePrefix     String       // เช่น 'กข', '1กข', '3กก'
+  plateNumber     String       // เช่น '1234', '9'
+  province        String       // เช่น 'เชียงใหม่', 'กรุงเทพมหานคร'
+  normalizedPlate String       // ข้อความรวมตัดเว้นวรรค เช่น 'กข1234เชียงใหม่'
+  imageUrl        String?      // รูปถ่ายป้ายทะเบียน
+  contactName     String       // ชื่อผู้ติดต่อ / จุดรับ
+  contactPhone    String       // เบอร์โทรศัพท์
+  pickupLocation  String       // จุดรับของ หรือ จุดที่น้ำท่วมที่ทำหลุดหาย
+  latitude        Float?
+  longitude       Float?
+  status          String       @default("ACTIVE") // 'ACTIVE', 'RETURNED', 'CANCELLED'
+  source          String       @default("DIRECT") // 'DIRECT', 'AI_OCR_BATCH', 'SOCIAL_IMPORT'
+  sourceUrl       String?      // ลิงก์ต้นทาง เช่น Facebook post, Twitter/X, ข่าว
+  sourceImageUrl  String?      // รูปภาพแคปหน้าจอต้นทาง
+  pinHash         String       // bcrypt hash ของรหัส PIN 4 หลัก
+  batchImportId   String?
+  batchImport     BatchImport? @relation(fields: [batchImportId], references: [id])
+  matchedPlateId  String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  auditLogs       AuditLog[]
+
+  @@index([normalizedPlate])
+  @@index([plateNumber, province])
+  @@index([reportType, status, createdAt])
+}
+
+model BatchImport {
+  id              String   @id @default(cuid())
+  sourceType      String   // 'IMAGE_OCR', 'SOCIAL_POST_TEXT', 'SOCIAL_POST_IMAGE'
+  sourceReference String?  // ลิงก์หรือชื่อกลุ่ม
+  rawContent      String?  // ข้อความดิบ
+  totalExtracted  Int      @default(0)
+  totalApproved   Int      @default(0)
+  createdBy       String?
+  createdAt       DateTime @default(now())
+
+  plates          Plate[]
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  plateId   String
+  plate     Plate    @relation(fields: [plateId], references: [id], onDelete: Cascade)
+  action    String   // 'CREATED', 'STATUS_RETURNED', 'UPDATED', 'DELETED'
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+}
