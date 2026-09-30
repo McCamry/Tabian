@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted, nextTick } from 'vue'
 
 interface MatchedPlate {
   id: string
@@ -64,6 +64,36 @@ const previewImageUrl = ref<string | null>(null)
 const showSingleModal = ref(false)
 const showOcrModal = ref(false)
 const showSocialModal = ref(false)
+
+// ---------------- Admin State ----------------
+const isAdmin = ref(false)
+const adminKey = ref('')
+const showAdminLoginModal = ref(false)
+const adminPasswordInput = ref('')
+const adminLoginError = ref('')
+const isVerifyingAdmin = ref(false)
+
+// ---------------- Admin Edit Modal State ----------------
+const showEditModal = ref(false)
+const isSubmittingEdit = ref(false)
+const editingPlate = ref<PlateItem | null>(null)
+const editForm = reactive({
+  reportType: 'FOUND' as 'FOUND' | 'LOST',
+  vehicleType: 'CAR' as 'CAR' | 'MOTORCYCLE' | 'OTHER',
+  platePrefix: '',
+  plateNumber: '',
+  province: 'ระยอง',
+  contactName: '',
+  contactPhone: '',
+  pickupLocation: '',
+  status: 'ACTIVE' as 'ACTIVE' | 'RETURNED' | 'CANCELLED',
+  sourceUrl: '',
+})
+
+// ---------------- Admin Delete Modal State ----------------
+const showDeleteConfirmModal = ref(false)
+const isDeletingPlate = ref(false)
+const plateToDelete = ref<PlateItem | null>(null)
 
 // ---------------- Single Entry Form State ----------------
 const singleForm = ref({
@@ -465,6 +495,15 @@ watch(searchQuery, () => {
 watch([selectedTab, selectedVehicle, selectedProvince], fetchPlates)
 
 onMounted(async () => {
+  // Restore Admin Session if exists
+  if (typeof window !== 'undefined') {
+    const savedAdminKey = sessionStorage.getItem('tabian_admin_key')
+    if (savedAdminKey) {
+      adminKey.value = savedAdminKey
+      isAdmin.value = true
+    }
+  }
+
   fetchProvinces()
   fetchStats()
 
@@ -578,6 +617,138 @@ async function copyPlateShareLink(plate: PlateItem) {
   }
 }
 
+// ==================== Admin Management Functions ====================
+async function submitAdminLogin() {
+  const pwd = adminPasswordInput.value.trim()
+  if (!pwd) {
+    adminLoginError.value = 'กรุณากรอกรหัสผ่านผู้ดูแลระบบ'
+    return
+  }
+  isVerifyingAdmin.value = true
+  adminLoginError.value = ''
+  try {
+    const res = await $fetch<any>('/api/admin/verify', {
+      method: 'POST',
+      body: { password: pwd },
+    })
+    if (res.success) {
+      adminKey.value = pwd
+      isAdmin.value = true
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('tabian_admin_key', pwd)
+      }
+      showAdminLoginModal.value = false
+      adminPasswordInput.value = ''
+      showToast('🛡️ เข้าสู่โหมดผู้ดูแลระบบเรียบร้อย')
+    }
+  } catch (err: any) {
+    adminLoginError.value = err.data?.statusMessage || 'รหัสผ่านผู้ดูแลระบบไม่ถูกต้อง'
+  } finally {
+    isVerifyingAdmin.value = false
+  }
+}
+
+function logoutAdmin() {
+  isAdmin.value = false
+  adminKey.value = ''
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('tabian_admin_key')
+  }
+  showToast('🔒 ออกจากโหมดผู้ดูแลระบบแล้ว')
+}
+
+function openEditPlateModal(plate: PlateItem) {
+  editingPlate.value = plate
+  editForm.reportType = plate.reportType
+  editForm.vehicleType = plate.vehicleType
+  editForm.platePrefix = plate.platePrefix
+  editForm.plateNumber = plate.plateNumber
+  editForm.province = plate.province
+  editForm.contactName = plate.contactName
+  editForm.contactPhone = plate.contactPhone
+  editForm.pickupLocation = plate.pickupLocation
+  editForm.status = plate.status
+  editForm.sourceUrl = plate.sourceUrl || ''
+  showEditModal.value = true
+}
+
+async function submitEditPlate() {
+  if (!editingPlate.value) return
+  isSubmittingEdit.value = true
+  try {
+    const res = await $fetch<any>(`/api/plates/${editingPlate.value.id}`, {
+      method: 'PUT',
+      headers: {
+        'x-admin-key': adminKey.value,
+      },
+      body: {
+        ...editForm,
+      },
+    })
+    if (res.success) {
+      showToast('✅ แก้ไขข้อมูลป้ายทะเบียนสำเร็จ')
+      showEditModal.value = false
+      await fetchPlates()
+      await fetchStats()
+    }
+  } catch (err: any) {
+    showToast('❌ ' + (err.data?.statusMessage || 'แก้ไขข้อมูลไม่สำเร็จ'))
+  } finally {
+    isSubmittingEdit.value = false
+  }
+}
+
+function confirmDeletePlate(plate: PlateItem) {
+  plateToDelete.value = plate
+  showDeleteConfirmModal.value = true
+}
+
+async function executeDeletePlate() {
+  if (!plateToDelete.value) return
+  isDeletingPlate.value = true
+  try {
+    const res = await $fetch<any>(`/api/plates/${plateToDelete.value.id}`, {
+      method: 'DELETE',
+      headers: {
+        'x-admin-key': adminKey.value,
+      },
+    })
+    if (res.success) {
+      showToast('🗑️ ลบรายการป้ายทะเบียนเรียบร้อย')
+      showDeleteConfirmModal.value = false
+      plateToDelete.value = null
+      await fetchPlates()
+      await fetchStats()
+    }
+  } catch (err: any) {
+    showToast('❌ ' + (err.data?.statusMessage || 'ลบข้อมูลไม่สำเร็จ'))
+  } finally {
+    isDeletingPlate.value = false
+  }
+}
+
+async function quickToggleReturnedStatus(plate: PlateItem) {
+  const newStatus = plate.status === 'RETURNED' ? 'ACTIVE' : 'RETURNED'
+  try {
+    const res = await $fetch<any>(`/api/plates/${plate.id}`, {
+      method: 'PUT',
+      headers: {
+        'x-admin-key': adminKey.value,
+      },
+      body: {
+        status: newStatus,
+      },
+    })
+    if (res.success) {
+      showToast(newStatus === 'RETURNED' ? '✅ ทำเครื่องหมายส่งมอบแล้ว' : '🔄 คืนสถานะรอส่งมอบ')
+      await fetchPlates()
+      await fetchStats()
+    }
+  } catch (err: any) {
+    showToast('❌ ' + (err.data?.statusMessage || 'เปลี่ยนสถานะไม่สำเร็จ'))
+  }
+}
+
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
   return d.toLocaleDateString('th-TH', {
@@ -615,6 +786,26 @@ function formatDate(dateStr: string) {
         </div>
       </div>
       <div class="flex items-center space-x-1.5">
+        <!-- Admin Mode Toggle / Status Button -->
+        <button 
+          v-if="!isAdmin"
+          @click="showAdminLoginModal = true; adminLoginError = ''" 
+          class="px-2.5 py-1.5 rounded-xl bg-emerald-800/80 hover:bg-emerald-900 text-emerald-100 font-medium text-xs flex items-center space-x-1 active:scale-95 transition border border-emerald-600/50"
+          title="เข้าสู่ระบบผู้ดูแล (Admin)"
+        >
+          <span>🔒</span>
+          <span>Admin</span>
+        </button>
+        <button 
+          v-else
+          @click="logoutAdmin" 
+          class="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs flex items-center space-x-1 active:scale-95 transition shadow-sm border border-amber-400"
+          title="ออกจากโหมด Admin"
+        >
+          <span>🛡️</span>
+          <span>ออก Admin</span>
+        </button>
+
         <button 
           @click="fetchPlates(); fetchStats(); showToast('รีเฟรชข้อมูลล่าสุดแล้ว')" 
           class="p-2 rounded-xl bg-emerald-800/60 hover:bg-emerald-800 text-white active:scale-95 transition"
@@ -627,6 +818,22 @@ function formatDate(dateStr: string) {
 
     <!-- Main Container -->
     <main class="flex-1 max-w-md w-full mx-auto px-4 py-3 space-y-3.5">
+      <!-- Admin Mode Active Indicator Banner -->
+      <div v-if="isAdmin" class="p-2.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 flex items-center justify-between text-xs shadow-xs animate-fade-in">
+        <div class="flex items-center space-x-2">
+          <span class="text-base">🛡️</span>
+          <div>
+            <div class="font-bold">โหมดผู้ดูแลระบบ (Admin Active)</div>
+            <div class="text-[11px] text-amber-700">สามารถแก้ไขหรือลบรายการป้ายทะเบียนได้ทุกรายการ</div>
+          </div>
+        </div>
+        <button 
+          @click="logoutAdmin"
+          class="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 text-[11px] font-semibold active:scale-95 transition"
+        >
+          ปิดโหมด
+        </button>
+      </div>
       <!-- 2 Core Action Buttons (Mobile-First) -->
       <div class="grid grid-cols-2 gap-3 pt-1">
         <button 
@@ -1012,6 +1219,46 @@ function formatDate(dateStr: string) {
                 >
                   <span class="text-sm">🎵</span>
                   <span>TikTok</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Admin Actions Bar (Visible only when Admin Mode is active) -->
+            <div 
+              v-if="isAdmin" 
+              class="pt-2 border-t border-amber-200/80 bg-amber-50/60 -mx-3.5 -mb-3.5 p-3 rounded-b-2xl flex items-center justify-between"
+            >
+              <div class="flex items-center space-x-1 text-[11px] font-bold text-amber-900">
+                <span>🛡️</span>
+                <span>จัดการ:</span>
+              </div>
+              <div class="flex items-center space-x-1.5">
+                <button 
+                  type="button"
+                  @click="quickToggleReturnedStatus(plate)"
+                  class="px-2 py-1.5 rounded-lg text-[11px] font-semibold active:scale-95 transition flex items-center space-x-1 shadow-2xs"
+                  :class="plate.status === 'RETURNED' ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'"
+                  :title="plate.status === 'RETURNED' ? 'คืนสถานะกำลังตามหา/รอรับ' : 'ทำเครื่องหมายว่าส่งมอบสำเร็จแล้ว'"
+                >
+                  <span>{{ plate.status === 'RETURNED' ? '🔄 คืนสถานะ' : '✅ ส่งมอบแล้ว' }}</span>
+                </button>
+                <button 
+                  type="button"
+                  @click="openEditPlateModal(plate)"
+                  class="px-2 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold active:scale-95 transition flex items-center space-x-1 shadow-2xs"
+                  title="แก้ไขข้อมูลป้ายนี้"
+                >
+                  <span>✏️</span>
+                  <span>แก้ไข</span>
+                </button>
+                <button 
+                  type="button"
+                  @click="confirmDeletePlate(plate)"
+                  class="px-2 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-semibold active:scale-95 transition flex items-center space-x-1 shadow-2xs"
+                  title="ลบป้ายนี้ออกจากระบบ"
+                >
+                  <span>🗑️</span>
+                  <span>ลบ</span>
                 </button>
               </div>
             </div>
@@ -1603,6 +1850,230 @@ function formatDate(dateStr: string) {
         </div>
         <div class="max-h-[75vh] overflow-auto flex items-center justify-center bg-slate-900 rounded-2xl p-1">
           <img :src="previewImageUrl" class="max-w-full max-h-[70vh] object-contain rounded-xl" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== Modal: เข้าสู่โหมดผู้ดูแล (Admin Login) ==================== -->
+    <div 
+      v-if="showAdminLoginModal" 
+      class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+      @click="showAdminLoginModal = false"
+    >
+      <div class="bg-white rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl my-auto animate-scale-up" @click.stop>
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-2xl">🔒</span>
+            <div>
+              <h3 class="font-bold text-base text-slate-900">เข้าสู่ระบบผู้ดูแล (Admin)</h3>
+              <p class="text-[11px] text-slate-500">สำหรับเจ้าหน้าที่จัดการและแก้ไขข้อมูล</p>
+            </div>
+          </div>
+          <button @click="showAdminLoginModal = false" class="text-slate-400 hover:text-slate-600 p-1 text-lg">✕</button>
+        </div>
+
+        <form @submit.prevent="submitAdminLogin" class="space-y-3.5 text-xs">
+          <div>
+            <label class="font-semibold text-slate-700 block mb-1">รหัสผ่านผู้ดูแลระบบ (Admin Secret Key)</label>
+            <input 
+              v-model="adminPasswordInput"
+              type="password"
+              placeholder="กรอกรหัสผ่านผู้ดูแลระบบ..."
+              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm font-mono"
+              autofocus
+            />
+          </div>
+
+          <div v-if="adminLoginError" class="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center space-x-1.5">
+            <span>⚠️</span>
+            <span>{{ adminLoginError }}</span>
+          </div>
+
+          <div class="flex space-x-2 pt-1">
+            <button 
+              type="button" 
+              @click="showAdminLoginModal = false"
+              class="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition"
+            >
+              ยกเลิก
+            </button>
+            <button 
+              type="submit" 
+              :disabled="isVerifyingAdmin"
+              class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition flex items-center justify-center space-x-1 shadow-sm"
+            >
+              <span v-if="isVerifyingAdmin" class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+              <span>{{ isVerifyingAdmin ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ' }}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ==================== Modal: แก้ไขข้อมูลป้ายทะเบียน (Admin Edit) ==================== -->
+    <div 
+      v-if="showEditModal" 
+      class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in"
+      @click="showEditModal = false"
+    >
+      <div class="bg-white rounded-3xl max-w-md w-full p-5 space-y-4 shadow-2xl my-auto animate-scale-up" @click.stop>
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-2xl">✏️</span>
+            <div>
+              <h3 class="font-bold text-base text-slate-900">แก้ไขข้อมูลป้ายทะเบียน</h3>
+              <p class="text-[11px] text-slate-500">สิทธิ์ผู้ดูแลระบบ (Admin Edit)</p>
+            </div>
+          </div>
+          <button @click="showEditModal = false" class="text-slate-400 hover:text-slate-600 p-1 text-lg">✕</button>
+        </div>
+
+        <form @submit.prevent="submitEditPlate" class="space-y-3 text-xs">
+          <!-- Report Type -->
+          <div class="grid grid-cols-2 gap-2">
+            <button 
+              type="button" 
+              @click="editForm.reportType = 'FOUND'"
+              :class="editForm.reportType === 'FOUND' ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-100 text-slate-700'"
+              class="py-2 rounded-xl text-center transition"
+            >
+              🟢 พบป้าย (เจอ)
+            </button>
+            <button 
+              type="button" 
+              @click="editForm.reportType = 'LOST'"
+              :class="editForm.reportType === 'LOST' ? 'bg-amber-500 text-white font-bold' : 'bg-slate-100 text-slate-700'"
+              class="py-2 rounded-xl text-center transition"
+            >
+              🔴 แจ้งหาย (หา)
+            </button>
+          </div>
+
+          <!-- Vehicle Type & Status -->
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="font-medium text-slate-700 block mb-1">ประเภทรถ</label>
+              <select v-model="editForm.vehicleType" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                <option value="CAR">🚗 รถยนต์</option>
+                <option value="MOTORCYCLE">🛵 มอเตอร์ไซค์</option>
+                <option value="OTHER">🚚 อื่นๆ</option>
+              </select>
+            </div>
+            <div>
+              <label class="font-medium text-slate-700 block mb-1">สถานะป้าย</label>
+              <select v-model="editForm.status" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-medium">
+                <option value="ACTIVE">🟢 รอส่งมอบ (Active)</option>
+                <option value="RETURNED">⚪ ส่งมอบเรียบร้อย (Returned)</option>
+                <option value="CANCELLED">❌ ยกเลิก (Cancelled)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Plate Prefix & Number -->
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="font-medium text-slate-700 block mb-1">หมวดอักษร</label>
+              <input v-model="editForm.platePrefix" type="text" placeholder="เช่น กข, 1กข" class="w-full px-3 py-2 rounded-xl border border-slate-300" required />
+            </div>
+            <div>
+              <label class="font-medium text-slate-700 block mb-1">หมายเลขทะเบียน</label>
+              <input v-model="editForm.plateNumber" type="text" placeholder="เช่น 1234, 9" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono" required />
+            </div>
+          </div>
+
+          <!-- Province -->
+          <div>
+            <label class="font-medium text-slate-700 block mb-1">จังหวัด</label>
+            <select v-model="editForm.province" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white" required>
+              <option v-for="prov in provinces" :key="prov" :value="prov">{{ prov }}</option>
+            </select>
+          </div>
+
+          <!-- Location -->
+          <div>
+            <label class="font-medium text-slate-700 block mb-1">จุดรับป้าย / จุดที่หลุดหาย</label>
+            <input v-model="editForm.pickupLocation" type="text" placeholder="เช่น ป้อมตำรวจแยกดอยเขาควาย" class="w-full px-3 py-2 rounded-xl border border-slate-300" required />
+          </div>
+
+          <!-- Contact Name & Phone -->
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="font-medium text-slate-700 block mb-1">ชื่อผู้ติดต่อ</label>
+              <input v-model="editForm.contactName" type="text" placeholder="ชื่อผู้ติดต่อ/หน่วยงาน" class="w-full px-3 py-2 rounded-xl border border-slate-300" required />
+            </div>
+            <div>
+              <label class="font-medium text-slate-700 block mb-1">เบอร์โทรศัพท์</label>
+              <input v-model="editForm.contactPhone" type="tel" placeholder="08xxxxxxxx" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono" required />
+            </div>
+          </div>
+
+          <!-- Source URL -->
+          <div>
+            <label class="font-medium text-slate-700 block mb-1">ลิงก์ต้นทางภายนอก (ถ้ามี)</label>
+            <input v-model="editForm.sourceUrl" type="url" placeholder="https://..." class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+          </div>
+
+          <!-- Buttons -->
+          <div class="flex space-x-2 pt-2 border-t border-slate-100">
+            <button 
+              type="button" 
+              @click="showEditModal = false"
+              class="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition"
+            >
+              ยกเลิก
+            </button>
+            <button 
+              type="submit" 
+              :disabled="isSubmittingEdit"
+              class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition flex items-center justify-center space-x-1 shadow-sm"
+            >
+              <span v-if="isSubmittingEdit" class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+              <span>{{ isSubmittingEdit ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข' }}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ==================== Modal: ยืนยันการลบป้ายทะเบียน (Delete Confirm) ==================== -->
+    <div 
+      v-if="showDeleteConfirmModal && plateToDelete" 
+      class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+      @click="showDeleteConfirmModal = false"
+    >
+      <div class="bg-white rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl my-auto animate-scale-up" @click.stop>
+        <div class="flex items-center space-x-2.5 text-rose-600 border-b border-rose-100 pb-3">
+          <span class="text-3xl">⚠️</span>
+          <div>
+            <h3 class="font-bold text-base text-slate-900">ยืนยันการลบป้ายทะเบียน</h3>
+            <p class="text-[11px] text-slate-500">การดำเนินการนี้ไม่สามารถเรียกคืนได้</p>
+          </div>
+        </div>
+
+        <div class="bg-rose-50/70 p-3 rounded-2xl border border-rose-200 space-y-1.5 text-xs text-rose-950">
+          <div><b>ทะเบียน:</b> <span class="font-bold font-mono">{{ plateToDelete.platePrefix }} {{ plateToDelete.plateNumber }} {{ plateToDelete.province }}</span></div>
+          <div><b>ประเภท:</b> {{ plateToDelete.reportType === 'FOUND' ? '🟢 พบป้ายแล้ว' : '🔴 แจ้งหาย' }}</div>
+          <div><b>สถานที่:</b> {{ plateToDelete.pickupLocation }}</div>
+          <div><b>ผู้ติดต่อ:</b> {{ plateToDelete.contactName }} ({{ plateToDelete.contactPhone }})</div>
+        </div>
+
+        <div class="flex space-x-2 pt-1">
+          <button 
+            type="button" 
+            @click="showDeleteConfirmModal = false; plateToDelete = null"
+            class="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition text-xs"
+          >
+            ยกเลิก
+          </button>
+          <button 
+            type="button" 
+            :disabled="isDeletingPlate"
+            @click="executeDeletePlate"
+            class="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition flex items-center justify-center space-x-1 shadow-sm text-xs"
+          >
+            <span v-if="isDeletingPlate" class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+            <span>{{ isDeletingPlate ? 'กำลังลบ...' : 'ยืนยันลบทันที' }}</span>
+          </button>
         </div>
       </div>
     </div>

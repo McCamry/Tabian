@@ -12,8 +12,9 @@
 | `GET` | `/api/plates/:id` | ดูรายละเอียดป้ายเดี่ยวและการจับคู่ | สาธารณะ |
 | `POST` | `/api/plates` | บันทึกข้อมูลป้ายเดี่ยว (เจอ หรือ หา) | สาธารณะ (มี Rate Limit) |
 | `POST` | `/api/plates/batch` | บันทึกป้ายทะเบียนชุดใหญ่ (Batch Save) | สาธารณะ (มี Rate Limit) |
-| `PATCH` | `/api/plates/:id/status`| อัปเดตสถานะ (เช่น ปิดเคสส่งมอบแล้ว) | ต้องใช้ PIN หรือ Admin Key |
-| `DELETE` | `/api/plates/:id` | ลบรายการ | ต้องใช้ PIN หรือ Admin Key |
+| `PUT` | `/api/plates/:id` | แก้ไขข้อมูลป้ายทะเบียนและสถานะ | ต้องใช้ Master Admin Key หรือ PIN |
+| `DELETE` | `/api/plates/:id` | ลบรายการป้ายทะเบียน | ต้องใช้ Master Admin Key หรือ PIN |
+| `POST` | `/api/admin/verify` | ตรวจสอบรหัสผ่าน Master Admin Key | สาธารณะ (Rate Limited) |
 | `POST` | `/api/ai/ocr-multi` | ส่งภาพถ่ายเพื่ออ่านทะเบียนหลายแผ่นด้วย AI | สาธารณะ (มี Rate Limit) |
 | `POST` | `/api/ai/parse-social`| ส่งข้อความโพสต์โซเชียลเพื่อสกัดทะเบียน | สาธารณะ (มี Rate Limit) |
 | `POST` | `/api/ai/fetch-url` | ดึงเนื้อหาและรูปภาพจากลิงก์เว็บ/โซเชียลอัตโนมัติ | สาธารณะ (มี Rate Limit) |
@@ -306,3 +307,86 @@
   "message": "โพสต์โซเชียลนี้ติดระบบป้องกันความปลอดภัย (Login Wall / Anti-Bot) ทำให้ระบบภายนอกไม่สามารถเข้าถึงเนื้อหาได้ กรุณาคัดลอกข้อความในโพสต์มาวาง หรือแคปหน้าจอรูปมาสแกนแทนครับ"
 }
 ```
+
+---
+
+### 2.10 ยืนยันรหัสผ่านผู้ดูแลระบบ `POST /api/admin/verify`
+ใช้สำหรับตรวจสอบ Master Admin Key เพื่อเข้าสู่โหมดผู้ดูแลระบบ
+
+**Request Body:**
+```json
+{
+  "password": "admin1234"
+}
+```
+
+**ตัวอย่าง Response 200 OK:**
+```json
+{
+  "success": true,
+  "message": "ยืนยันตัวตนผู้ดูแลระบบสำเร็จ"
+}
+```
+
+**ตัวอย่าง Response 401 Unauthorized:**
+```json
+{
+  "statusCode": 401,
+  "statusMessage": "รหัสผ่านผู้ดูแลระบบไม่ถูกต้อง"
+}
+```
+
+---
+
+### 2.11 แก้ไขข้อมูลป้ายทะเบียน `PUT /api/plates/:id`
+แก้ไขข้อมูลป้ายทะเบียนและสถานะ โดยผู้ดูแลระบบ (ใช้ Header `x-admin-key`) หรือเจ้าของข้อมูลเดิม (ใช้ PIN)
+
+**Request Headers (สำหรับ Admin):**
+- `x-admin-key`: `<Master Admin Key>`
+
+**Request Body:**
+```json
+{
+  "reportType": "FOUND",
+  "vehicleType": "CAR",
+  "platePrefix": "กข",
+  "plateNumber": "1234",
+  "province": "ระยอง",
+  "contactName": "จุดรวมป้าย",
+  "contactPhone": "0812345678",
+  "pickupLocation": "วัดเนินพระ",
+  "status": "RETURNED",
+  "sourceUrl": "https://...",
+  "pin": "1234"
+}
+```
+
+**ตัวอย่าง Response 200 OK:**
+```json
+{
+  "success": true,
+  "message": "อัปเดตข้อมูลป้ายทะเบียนสำเร็จ",
+  "data": { ... }
+}
+```
+
+---
+
+### 2.12 ลบรายการป้ายทะเบียน `DELETE /api/plates/:id`
+ลบรายการป้ายทะเบียนออกจากระบบอย่างถาวร
+
+**Request Headers (สำหรับ Admin):**
+- `x-admin-key`: `<Master Admin Key>`
+
+**Query Parameters / Body (สำหรับเจ้าของข้อมูลเดิม):**
+- `pin`: `<PIN 4 หลัก>`
+
+**ตัวอย่าง Response 200 OK:**
+```json
+{
+  "success": true,
+  "message": "ลบรายการป้ายทะเบียน กข 1234 ระยอง เรียบร้อยแล้ว",
+  "deletedId": "clx123abc456"
+}
+```
+
