@@ -1,7 +1,8 @@
-import { prisma } from '~/server/utils/prisma'
+import { prisma, ensureDatabaseSchema } from '~/server/utils/prisma'
 import { maskPhoneNumber } from '~/server/utils/plate'
 
 export default defineEventHandler(async (event) => {
+  await ensureDatabaseSchema()
   const query = getQuery(event)
   const q = (query.q as string || '').trim()
   const type = query.type as string

@@ -123,6 +123,20 @@
   3. ปรับปรุง `package.json`: ให้คำสั่ง `npm run build` รัน `prisma generate` และ `prisma db push` อัตโนมัติ เพื่อรับประกันว่าโครงสร้างฐานข้อมูล SQLite บน Cloud จะพร้อมใช้งานเสมอ
   4. เพิ่มระบบความปลอดภัย `.gitignore`: ละเว้น `.env`, `node_modules`, `.output`, และฐานข้อมูล `*.db` ในเครื่อง เพื่อป้องกันการหลุดของคีย์ความลับ
 
+---
+
+## ADR-014: Zero-Fail SQLite Auto-Initialization และ Dynamic Runtime Path Resolution
+- **สถานะ**: อนุมัติ (Approved)
+- **บริบท**: ในสภาพแวดล้อม Container บน Render หรือคลาวด์อื่น ๆ:
+  1. Prisma CLI มักประเมินพาธสัมพัทธ์ของ SQLite จากโฟลเดอร์ `prisma/` ในขณะที่ Server runtime อาจประเมินจาก Root directory ทำให้เกิดปัญหาค้นหาไฟล์ฐานข้อมูลไม่เจอ
+  2. แพ็กเกจ `prisma` CLI ในโหมด Production มักถูกกรองออกหรือไม่ได้ติดตั้ง ทำให้ไม่สามารถเรียกคำสั่งภายนอกอย่าง `prisma db push` ขณะเริ่ม container
+- **การตัดสินใจ**:
+  1. ย้าย `prisma` เข้าสู่ `dependencies` หลักใน `package.json`
+  2. เขียนตรรกะค้นหาไฟล์ฐานข้อมูล SQLite อัตโนมัติใน `server/utils/prisma.ts` เพื่อเชื่อมโยงไปยังตำแหน่งไฟล์จริงอย่างแม่นยำ ไม่ว่าจะรันผ่าน CLI หรือ Nitro bundle
+  3. เพิ่มระบบ **Zero-Fail Auto-Initialization**: เมื่อ Nitro บูตขึ้นมา ระบบจะทดสอบตรวจสอบตาราง `Plate` หากยังไม่ถูกสร้าง (เช่น กรณีสร้าง instance ใหม่หรือดิสก์ว่าง) ระบบจะรัน DDL สร้างตาราง `BatchImport`, `Plate`, `AuditLog` และ Index ทั้งหมดให้อัตโนมัติในระดับคำสั่ง SQL ตรงทันที
+  4. สร้าง Nitro Plugin `server/plugins/database.ts` และ Endpoint `GET /api/health` สำหรับตรวจเช็กความพร้อมของฐานข้อมูลแบบเรียลไทม์
+
+
 
 
 

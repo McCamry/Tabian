@@ -1,8 +1,9 @@
-import { prisma } from '~/server/utils/prisma'
+import { prisma, ensureDatabaseSchema } from '~/server/utils/prisma'
 import { normalizePlate, maskPhoneNumber } from '~/server/utils/plate'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
+  await ensureDatabaseSchema()
   const body = await readBody(event)
 
   const {

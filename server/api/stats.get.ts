@@ -1,6 +1,7 @@
-import { prisma } from '~/server/utils/prisma'
+import { prisma, ensureDatabaseSchema } from '~/server/utils/prisma'
 
 export default defineEventHandler(async () => {
+  await ensureDatabaseSchema()
   const [foundCount, lostCount, returnedCount, totalCount] = await Promise.all([
     prisma.plate.count({ where: { reportType: 'FOUND', status: 'ACTIVE' } }),
     prisma.plate.count({ where: { reportType: 'LOST', status: 'ACTIVE' } }),

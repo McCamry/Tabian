@@ -1,8 +1,10 @@
-import { prisma } from '~/server/utils/prisma'
+import { prisma, ensureDatabaseSchema } from '~/server/utils/prisma'
 import { normalizePlate } from '~/server/utils/plate'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
+  await ensureDatabaseSchema()
+
   const body = await readBody(event)
 
   const {
@@ -32,20 +34,20 @@ export default defineEventHandler(async (event) => {
     formattedSourceUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
   }
 
-  // 1. สร้างตาราง BatchImport
-  const batchImport = await prisma.batchImport.create({
-    data: {
-      sourceType,
-      sourceReference: formattedSourceUrl || sourceReference || null,
-      rawContent,
-      totalExtracted: plates.length,
-      totalApproved: plates.length,
-      createdBy: sharedInfo.contactName,
-    },
-  })
-
-  // 2. บันทึกรายการป้ายทั้งหมดลงฐานข้อมูล
   try {
+    // 1. สร้างตาราง BatchImport
+    const batchImport = await prisma.batchImport.create({
+      data: {
+        sourceType,
+        sourceReference: formattedSourceUrl || sourceReference || null,
+        rawContent,
+        totalExtracted: plates.length,
+        totalApproved: plates.length,
+        createdBy: sharedInfo.contactName,
+      },
+    })
+
+    // 2. บันทึกรายการป้ายทั้งหมดลงฐานข้อมูล
     const createdPlates = await Promise.all(
       plates.map(async (p: any) => {
         const prefix = (p.platePrefix || '').trim()
@@ -88,12 +90,5 @@ export default defineEventHandler(async (event) => {
       statusCode: 500,
       statusMessage: `บันทึกไม่สำเร็จ: ${err.message || 'ข้อผิดพลาดฐานข้อมูล'}`,
     })
-  }
-
-  return {
-    success: true,
-    message: `บันทึกข้อมูลป้ายทะเบียนชุดใหญ่สำเร็จทั้งหมด ${createdPlates.length} รายการ`,
-    batchImportId: batchImport.id,
-    savedCount: createdPlates.length,
   }
 })
