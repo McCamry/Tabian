@@ -45,31 +45,50 @@ export default defineEventHandler(async (event) => {
   })
 
   // 2. บันทึกรายการป้ายทั้งหมดลงฐานข้อมูล
-  const createdPlates = await Promise.all(
-    plates.map(async (p: any) => {
-      const normalized = normalizePlate(p.platePrefix, p.plateNumber, p.province)
-      return prisma.plate.create({
-        data: {
-          reportType,
-          vehicleType: p.vehicleType || 'CAR',
-          platePrefix: p.platePrefix.trim(),
-          plateNumber: p.plateNumber.trim(),
-          province: p.province.trim(),
-          normalizedPlate: normalized,
-          imageUrl: p.imageUrl || sharedInfo.imageUrl || null,
-          sourceUrl: formattedSourceUrl,
-          sourceImageUrl: sharedInfo.sourceImageUrl || null,
-          contactName: (p.contactName && p.contactName.trim()) || sharedInfo.contactName.trim(),
-          contactPhone: (p.contactPhone && p.contactPhone.trim()) || sharedInfo.contactPhone.trim(),
-          pickupLocation: (p.pickupLocation && p.pickupLocation.trim()) || sharedInfo.pickupLocation.trim(),
-          status: 'ACTIVE',
-          source: sourceType === 'IMAGE_OCR' ? 'AI_OCR_BATCH' : 'SOCIAL_IMPORT',
-          pinHash,
-          batchImportId: batchImport.id,
-        },
+  try {
+    const createdPlates = await Promise.all(
+      plates.map(async (p: any) => {
+        const prefix = (p.platePrefix || '').trim()
+        const num = (p.plateNumber || '').trim()
+        const prov = (p.province || 'ระยอง').trim()
+        const normalized = normalizePlate(prefix, num, prov)
+
+        return prisma.plate.create({
+          data: {
+            reportType,
+            vehicleType: p.vehicleType || 'CAR',
+            platePrefix: prefix,
+            plateNumber: num,
+            province: prov,
+            normalizedPlate: normalized,
+            imageUrl: p.imageUrl || sharedInfo.imageUrl || null,
+            sourceUrl: formattedSourceUrl,
+            sourceImageUrl: sharedInfo.sourceImageUrl || null,
+            contactName: (p.contactName && p.contactName.trim()) || sharedInfo.contactName.trim(),
+            contactPhone: (p.contactPhone && p.contactPhone.trim()) || sharedInfo.contactPhone.trim(),
+            pickupLocation: (p.pickupLocation && p.pickupLocation.trim()) || sharedInfo.pickupLocation.trim(),
+            status: 'ACTIVE',
+            source: sourceType === 'IMAGE_OCR' ? 'AI_OCR_BATCH' : 'SOCIAL_IMPORT',
+            pinHash,
+            batchImportId: batchImport.id,
+          },
+        })
       })
+    )
+
+    return {
+      success: true,
+      message: `บันทึกข้อมูลป้ายทะเบียนชุดใหญ่สำเร็จทั้งหมด ${createdPlates.length} รายการ`,
+      batchImportId: batchImport.id,
+      savedCount: createdPlates.length,
+    }
+  } catch (err: any) {
+    console.error('Error saving batch plates:', err)
+    throw createError({
+      statusCode: 500,
+      statusMessage: `บันทึกไม่สำเร็จ: ${err.message || 'ข้อผิดพลาดฐานข้อมูล'}`,
     })
-  )
+  }
 
   return {
     success: true,

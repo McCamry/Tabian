@@ -1,5 +1,8 @@
-export function normalizePlate(prefix: string, number: string, province: string): string {
-  return `${prefix.replace(/\s+/g, '')}${number.replace(/\s+/g, '')}${province.replace(/\s+/g, '')}`.toLowerCase()
+export function normalizePlate(prefix: string = '', number: string = '', province: string = ''): string {
+  const p = (prefix || '').replace(/\s+/g, '')
+  const n = (number || '').replace(/\s+/g, '')
+  const pr = (province || '').replace(/\s+/g, '')
+  return `${p}${n}${pr}`.toLowerCase()
 }
 
 export function maskPhoneNumber(phone: string): string {

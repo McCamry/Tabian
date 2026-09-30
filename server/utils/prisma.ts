@@ -1,10 +1,17 @@
 import { PrismaClient } from '@prisma/client'
 import path from 'node:path'
+import fs from 'node:fs'
 
-// ตรวจสอบและกำหนด Absolute Path ให้กับ SQLite tabian.db เพื่อป้องกันปัญหา Path แตกต่างระหว่าง CLI และ Runtime
-if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('file:.')) {
-  const dbPath = path.resolve(process.cwd(), 'prisma/tabian.db').replace(/\\/g, '/')
-  process.env.DATABASE_URL = `file:${dbPath}`
+// Ensure SQLite database URL is properly configured and directory exists
+const rawUrl = process.env.DATABASE_URL || 'file:./prisma/tabian.db'
+if (rawUrl.startsWith('file:')) {
+  const filePath = rawUrl.replace(/^file:/, '').replace(/^(\.\/|\.\\)/, '')
+  const absoluteDbPath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath)
+  const dir = path.dirname(absoluteDbPath)
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  process.env.DATABASE_URL = `file:${absoluteDbPath.replace(/\\/g, '/')}`
 }
 
 let prisma: PrismaClient
