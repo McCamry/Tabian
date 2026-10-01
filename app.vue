@@ -26,6 +26,7 @@ interface PlateItem {
   source: string
   createdAt: string
   matchedOpposite?: MatchedPlate | null
+  isFuzzyMatch?: boolean
 }
 
 interface StatsData {
@@ -39,6 +40,7 @@ interface StatsData {
 const route = useRoute()
 const targetPlateId = ref<string>('')
 const searchQuery = ref('')
+const fuzzySearch = ref(false)
 const selectedTab = ref<'ALL' | 'FOUND' | 'LOST' | 'RETURNED'>('ALL')
 const selectedVehicle = ref<'ALL' | 'CAR' | 'MOTORCYCLE'>('ALL')
 const selectedProvince = ref('')
@@ -59,6 +61,7 @@ function showToast(msg: string) {
 // Modals State
 const showCallModal = ref(false)
 const selectedPlateToCall = ref<PlateItem | null>(null)
+const selectedEvidencePlate = ref<PlateItem | null>(null)
 const previewImageUrl = ref<string | null>(null)
 
 const showSingleModal = ref(false)
@@ -513,7 +516,10 @@ async function fetchPlates() {
   isLoading.value = true
   try {
     const params: Record<string, string> = {}
-    if (searchQuery.value.trim()) params.q = searchQuery.value.trim()
+    if (searchQuery.value.trim()) {
+      params.q = searchQuery.value.trim()
+      if (fuzzySearch.value) params.fuzzy = 'true'
+    }
     
     // If opened via deep link id and no tab was explicitly switched yet, search ALL statuses to guarantee plate visibility
     if (targetPlateId.value && selectedTab.value === 'ALL') {
@@ -542,13 +548,34 @@ async function fetchPlates() {
   }
 }
 
+function downloadCsv() {
+  const params = new URLSearchParams()
+  if (searchQuery.value.trim()) params.set('q', searchQuery.value.trim())
+  if (selectedTab.value === 'FOUND') {
+    params.set('type', 'FOUND')
+    params.set('status', 'ACTIVE')
+  } else if (selectedTab.value === 'LOST') {
+    params.set('type', 'LOST')
+    params.set('status', 'ACTIVE')
+  } else if (selectedTab.value === 'RETURNED') {
+    params.set('status', 'RETURNED')
+  } else {
+    params.set('status', 'ALL')
+  }
+  if (selectedVehicle.value !== 'ALL') params.set('vehicle', selectedVehicle.value)
+  if (selectedProvince.value) params.set('province', selectedProvince.value)
+
+  const url = `/api/plates/export?${params.toString()}`
+  window.open(url, '_blank')
+}
+
 let searchTimer: any = null
 watch(searchQuery, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(fetchPlates, 250)
 })
 
-watch([selectedTab, selectedVehicle, selectedProvince], fetchPlates)
+watch([selectedTab, selectedVehicle, selectedProvince, fuzzySearch], fetchPlates)
 
 onMounted(async () => {
   // Restore Admin Session if exists
@@ -991,20 +1018,43 @@ function formatDate(dateStr: string) {
       </div>
 
       <!-- Search Omnibox -->
-      <div class="relative">
-        <input 
-          v-model="searchQuery"
-          type="text" 
-          placeholder="🔍 พิมพ์เลขทะเบียน เช่น 1234 หรือ เชียงใหม่..."
-          class="w-full pl-4 pr-10 py-3 rounded-xl bg-white border border-slate-200 shadow-xs text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-        />
-        <button 
-          v-if="searchQuery" 
-          @click="searchQuery = ''" 
-          class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm p-1"
-        >
-          ✕
-        </button>
+      <div class="space-y-1.5">
+        <div class="relative">
+          <input 
+            v-model="searchQuery"
+            type="text" 
+            placeholder="🔍 พิมพ์เลข เช่น 1234 หรือ ๑๒๓๔ หรือ เชียงใหม่..."
+            class="w-full pl-4 pr-10 py-3 rounded-xl bg-white border border-slate-200 shadow-xs text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+          />
+          <button 
+            v-if="searchQuery" 
+            @click="searchQuery = ''" 
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm p-1"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Search Toolbar: Fuzzy Option & Export CSV -->
+        <div class="flex items-center justify-between text-xs px-1">
+          <label class="flex items-center space-x-1.5 cursor-pointer text-slate-600 hover:text-slate-900 select-none">
+            <input 
+              type="checkbox" 
+              v-model="fuzzySearch" 
+              class="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+            />
+            <span class="text-[11px] font-medium">รวมทะเบียนใกล้เคียง 1 ตัว (Fuzzy)</span>
+          </label>
+          <button 
+            type="button"
+            @click="downloadCsv" 
+            class="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-lg flex items-center space-x-1 active:scale-95 transition"
+            title="ดาวน์โหลดรายการป้ายทะเบียนที่กำลังแสดงเป็นไฟล์ CSV"
+          >
+            <span>📥</span>
+            <span>ส่งออก CSV</span>
+          </button>
+        </div>
       </div>
 
       <!-- Quick Zone Chips -->
@@ -1171,6 +1221,15 @@ function formatDate(dateStr: string) {
                 <span class="text-[11px] text-slate-500">
                   {{ plate.vehicleType === 'MOTORCYCLE' ? '🛵 มอเตอร์ไซค์' : '🚗 รถยนต์' }}
                 </span>
+
+                <span 
+                  v-if="plate.isFuzzyMatch" 
+                  class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center space-x-1"
+                  title="ตัวเลขตรงกับคำค้นหาโดยผิดเพี้ยนไป 1 ตัว (เช่น เลขเปื้อนโคลน)"
+                >
+                  <span>🔍</span>
+                  <span>ใกล้เคียง 1 ตัว</span>
+                </span>
               </div>
               <span class="text-[10px] text-slate-500">{{ formatDate(plate.createdAt) }}</span>
             </div>
@@ -1214,9 +1273,18 @@ function formatDate(dateStr: string) {
               </div>
             </div>
 
-            <!-- Plate Image (if present) -->
-            <div v-if="plate.imageUrl" class="rounded-xl overflow-hidden border border-slate-200 max-h-48 bg-slate-100 flex items-center justify-center">
-              <img :src="plate.imageUrl" alt="รูปถ่ายป้ายทะเบียน" class="w-full h-auto object-cover" />
+            <!-- Plate Image (if present, click opens Evidence Lightbox) -->
+            <div 
+              v-if="plate.imageUrl" 
+              @click="selectedEvidencePlate = plate"
+              class="rounded-xl overflow-hidden border border-slate-200 max-h-48 bg-slate-100 flex items-center justify-center cursor-pointer group relative hover:border-emerald-400 transition"
+              title="แตะเพื่อเปิดดูภาพหลักฐานขนาดใหญ่"
+            >
+              <img :src="plate.imageUrl" alt="รูปถ่ายป้ายทะเบียน" class="w-full h-auto object-cover group-hover:scale-102 transition duration-200" />
+              <div class="absolute bottom-2 right-2 bg-black/60 backdrop-blur-xs text-white text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center space-x-1 opacity-90 group-hover:opacity-100">
+                <span>🔍</span>
+                <span>ขยายภาพ</span>
+              </div>
             </div>
 
             <!-- Location & Contact Info -->
@@ -2040,6 +2108,96 @@ function formatDate(dateStr: string) {
         </div>
         <div class="max-h-[75vh] overflow-auto flex items-center justify-center bg-slate-900 rounded-2xl p-1">
           <img :src="previewImageUrl" class="max-w-full max-h-[70vh] object-contain rounded-xl" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== Modal: Evidence Lightbox (ขยายภาพหลักฐานเต็มจอ) ==================== -->
+    <div 
+      v-if="selectedEvidencePlate" 
+      class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+      @click="selectedEvidencePlate = null"
+    >
+      <div class="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl space-y-0 my-auto flex flex-col max-h-[92vh]" @click.stop>
+        <!-- Dialog Header -->
+        <div class="p-3.5 px-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+          <div>
+            <h3 class="font-bold text-sm flex items-center space-x-1.5">
+              <span>📸</span>
+              <span>รูปหลักฐาน: {{ selectedEvidencePlate.platePrefix }} {{ selectedEvidencePlate.plateNumber }} {{ selectedEvidencePlate.province }}</span>
+            </h3>
+            <p class="text-[10px] text-slate-400">
+              {{ selectedEvidencePlate.reportType === 'FOUND' ? '🟢 ป้ายที่พบ' : '🔴 ป้ายที่แจ้งตามหา' }} · {{ selectedEvidencePlate.pickupLocation }}
+            </p>
+          </div>
+          <button 
+            @click="selectedEvidencePlate = null" 
+            class="text-slate-400 hover:text-white p-1 text-lg rounded-full"
+            title="ปิดหน้าต่าง"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- High-Res Image Area -->
+        <div class="p-3 bg-slate-950 flex items-center justify-center overflow-auto max-h-[58vh]">
+          <img 
+            :src="selectedEvidencePlate.imageUrl" 
+            :alt="'หลักฐานป้ายทะเบียน ' + selectedEvidencePlate.platePrefix + ' ' + selectedEvidencePlate.plateNumber"
+            class="max-w-full max-h-[55vh] object-contain rounded-lg shadow-lg"
+          />
+        </div>
+
+        <!-- Action Bar & Source Links -->
+        <div class="p-3.5 bg-slate-50 border-t border-slate-200 text-xs space-y-2 shrink-0">
+          <div class="flex items-center justify-between text-slate-700">
+            <div>
+              <span class="text-slate-500 font-medium">ผู้ติดต่อ: </span>
+              <span class="font-bold">{{ selectedEvidencePlate.contactName }}</span>
+              <span v-if="selectedEvidencePlate.contactPhone" class="ml-1 text-slate-500">({{ selectedEvidencePlate.contactPhoneMasked }})</span>
+            </div>
+            <button 
+              @click="selectedPlateToCall = selectedEvidencePlate; showCallModal = true; selectedEvidencePlate = null"
+              class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center space-x-1 active:scale-95 shadow-xs"
+            >
+              <span>📞</span>
+              <span>โทรออก</span>
+            </button>
+          </div>
+
+          <!-- Direct Links -->
+          <div class="flex flex-wrap gap-2 pt-1 border-t border-slate-200">
+            <a 
+              :href="selectedEvidencePlate.imageUrl" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 flex items-center space-x-1 font-medium"
+            >
+              <span>🖼️</span>
+              <span>เปิดรูปขนาดเต็ม</span>
+            </a>
+
+            <a 
+              v-if="selectedEvidencePlate.sourceUrl" 
+              :href="selectedEvidencePlate.sourceUrl" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              class="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 flex items-center space-x-1 font-bold"
+            >
+              <span>🔗</span>
+              <span>โพสต์ต้นทาง</span>
+            </a>
+
+            <button 
+              v-if="selectedEvidencePlate.sourceImageUrl" 
+              @click="previewImageUrl = selectedEvidencePlate.sourceImageUrl; selectedEvidencePlate = null"
+              type="button"
+              class="px-2.5 py-1 rounded-lg bg-purple-50 border border-purple-200 text-purple-700 hover:bg-purple-100 flex items-center space-x-1 font-medium"
+            >
+              <span>📸</span>
+              <span>ดูรูปแคปหน้าจอ</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

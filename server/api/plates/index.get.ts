@@ -1,10 +1,11 @@
 import { prisma, ensureDatabaseSchema } from '~/server/utils/prisma'
-import { maskPhoneNumber } from '~/server/utils/plate'
+import { maskPhoneNumber, normalizePlateQuery, levenshteinDistance } from '~/server/utils/plate'
 
 export default defineEventHandler(async (event) => {
   await ensureDatabaseSchema()
   const query = getQuery(event)
   const q = (query.q as string || '').trim()
+  const fuzzy = query.fuzzy === 'true' || query.fuzzy === '1'
   const type = query.type as string
   const vehicle = query.vehicle as string
   const province = query.province as string
@@ -32,12 +33,14 @@ export default defineEventHandler(async (event) => {
     whereClause.province = { contains: province }
   }
 
-  // Search keyword (q)
+  // Search keyword (q) with Thai numeral normalization
+  const normalizedQ = normalizePlateQuery(q)
+  const isDigitsOnly = /^\d+$/.test(normalizedQ)
+
   if (q) {
-    const cleanQ = q.replace(/\s+/g, '').toLowerCase()
     whereClause.OR = [
-      { normalizedPlate: { contains: cleanQ } },
-      { plateNumber: { contains: q } },
+      { normalizedPlate: { contains: normalizedQ } },
+      { plateNumber: { contains: normalizedQ } },
       { platePrefix: { contains: q } },
       { province: { contains: q } },
       { pickupLocation: { contains: q } },
@@ -50,9 +53,47 @@ export default defineEventHandler(async (event) => {
     take: 50,
   })
 
+  let finalPlates: any[] = plates.map((p) => ({ ...p, isFuzzyMatch: false }))
+
+  // Fuzzy match (Levenshtein distance = 1) if requested and query length >= 3
+  if (fuzzy && normalizedQ.length >= 3) {
+    const existingIds = new Set(plates.map((p) => p.id))
+    const candidateWhere = { ...whereClause }
+    delete candidateWhere.OR
+
+    const candidates = await prisma.plate.findMany({
+      where: candidateWhere,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+
+    const digitsOnly = normalizedQ.replace(/\D/g, '')
+    for (const c of candidates) {
+      if (existingIds.has(c.id)) continue
+
+      let isNear = false
+      if (isDigitsOnly && c.plateNumber) {
+        if (levenshteinDistance(c.plateNumber, normalizedQ) === 1) {
+          isNear = true
+        }
+      } else {
+        if (levenshteinDistance(c.normalizedPlate, normalizedQ) === 1) {
+          isNear = true
+        } else if (digitsOnly.length >= 3 && c.plateNumber && levenshteinDistance(c.plateNumber, digitsOnly) === 1) {
+          isNear = true
+        }
+      }
+
+      if (isNear) {
+        existingIds.add(c.id)
+        finalPlates.push({ ...c, isFuzzyMatch: true })
+      }
+    }
+  }
+
   // Check matching opposite plates for each item (FOUND <-> LOST)
   const results = await Promise.all(
-    plates.map(async (p) => {
+    finalPlates.map(async (p) => {
       const oppositeType = p.reportType === 'FOUND' ? 'LOST' : 'FOUND'
       const match = await prisma.plate.findFirst({
         where: {
@@ -88,6 +129,7 @@ export default defineEventHandler(async (event) => {
         source: p.source,
         createdAt: p.createdAt,
         matchedOpposite: match,
+        isFuzzyMatch: !!p.isFuzzyMatch,
       }
     })
   )
