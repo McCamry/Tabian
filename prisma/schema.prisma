@@ -54,11 +54,22 @@ model BatchImport {
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  plateId   String
-  plate     Plate    @relation(fields: [plateId], references: [id], onDelete: Cascade)
-  action    String   // 'CREATED', 'STATUS_RETURNED', 'UPDATED', 'DELETED'
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  plateId    String
+  plate      Plate    @relation(fields: [plateId], references: [id], onDelete: Cascade)
+  action     String   // 'CREATED', 'STATUS_RETURNED', 'UPDATED', 'DELETED', 'BATCH_CREATED'
+  ipAddress  String?
+  userAgent  String?
+  deviceType String?  // 'MOBILE', 'TABLET', 'DESKTOP', 'UNKNOWN'
+  browser    String?  // เช่น 'Chrome Mobile', 'Safari', 'LINE In-App'
+  os         String?  // เช่น 'iOS', 'Android', 'Windows', 'macOS'
+  city       String?  // เช่น 'Bangkok', 'Rayong'
+  country    String?  // เช่น 'TH'
+  latitude   Float?
+  longitude  Float?
+  metadata   String?  // JSON เก็บรายละเอียดดิบทั้งหมด (Headers, Screen, Network, GPS)
+  createdAt  DateTime @default(now())
+
+  @@index([plateId, createdAt])
+  @@index([action, createdAt])
 }

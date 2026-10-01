@@ -1,5 +1,6 @@
 import { prisma, ensureDatabaseSchema } from '~/server/utils/prisma'
 import { normalizePlate, maskPhoneNumber } from '~/server/utils/plate'
+import { extractClientAudit } from '~/server/utils/clientInfo'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
@@ -45,6 +46,8 @@ export default defineEventHandler(async (event) => {
   const pinHash = bcrypt.hashSync(String(pin), 10)
   const normalized = normalizePlate(platePrefix, plateNumber, province)
 
+  const clientAudit = extractClientAudit(event, body.clientInfo)
+
   // บันทึกลงฐานข้อมูล
   const createdPlate = await prisma.plate.create({
     data: {
@@ -60,6 +63,8 @@ export default defineEventHandler(async (event) => {
       contactName: contactName.trim(),
       contactPhone: contactPhone.trim(),
       pickupLocation: pickupLocation.trim(),
+      latitude: body.latitude || clientAudit.latitude || null,
+      longitude: body.longitude || clientAudit.longitude || null,
       status: 'ACTIVE',
       source: 'DIRECT',
       pinHash,
@@ -85,13 +90,23 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  // สร้าง Audit Log
+  // สร้าง Audit Log เก็บข้อมูลผู้สร้างละเอียดที่สุดเท่าที่จะเก็บได้
   await prisma.auditLog.create({
     data: {
       plateId: createdPlate.id,
       action: 'CREATED',
+      ipAddress: clientAudit.ipAddress,
+      userAgent: clientAudit.userAgent,
+      deviceType: clientAudit.deviceType,
+      browser: clientAudit.browser,
+      os: clientAudit.os,
+      city: clientAudit.city,
+      country: clientAudit.country,
+      latitude: clientAudit.latitude,
+      longitude: clientAudit.longitude,
+      metadata: clientAudit.metadata,
     },
-  })
+  }).catch((err) => console.error('[AuditLog] Error recording audit log:', err))
 
   return {
     success: true,

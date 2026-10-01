@@ -189,6 +189,28 @@
   4. ระบบ **Zero-Fail Auto-Initialization (`ensureDatabaseSchema`)** ยังคงทำงานครอบคลุมทั้ง Turso และ Local SQLite โดยจะทดสอบและรัน DDL สร้างตารางและอินเด็กซ์อัตโนมัติหากพบว่าเป็นฐานข้อมูลเปล่า
   5. ปรับปรุงสคริปต์ `build` ใน `package.json` ให้เป็น `prisma generate && nuxt build` เพื่อความเข้ากันได้ 100% กับกระบวนการ Build บน Serverless ของ Vercel
 
+---
+
+## ADR-018: ระบบบันทึกประวัติอย่างละเอียด (Deep Client Audit Trail) และการแก้ไขข้อมูลด้วย PIN สำหรับเจ้าของรายการ (Owner Self-Service Edit)
+- **สถานะ**: อนุมัติ (Approved)
+- **บริบท**:
+  - ผู้ใช้งานและผู้ดูแลต้องการให้มีการบันทึกประวัติการสร้างและแก้ไขรายการป้ายทะเบียนให้ละเอียดที่สุด (IP, เบราว์เซอร์, ระบบปฏิบัติการ, อุปกรณ์, พิกัดตำแหน่ง) เพื่อป้องกันสแปม ติดตามเบาะแส และความโปร่งใส
+  - ในระบบเดิม ปุ่มแก้ไขข้อมูล (`✏️ แก้ไข`) ถูกจำกัดการมองเห็นเฉพาะเมื่อเปิดโหมดผู้ดูแลระบบ (`isAdmin`) เท่านั้น ทำให้เจ้าของรายการทั่วไปที่เคยตั้งรหัส PIN 4 หลักไว้ไม่สามารถเข้าถึงการแก้ไขข้อมูลหรือปิดรายการของตนเองได้
+- **การตัดสินใจ**:
+  1. **ขยายตาราง `AuditLog`**:
+     - เพิ่มฟิลด์: `deviceType`, `browser`, `os`, `city`, `country`, `latitude`, `longitude`, `metadata` (Raw JSON)
+     - ปรับระบบ Auto-Init (`ensureDatabaseSchema`) ใน `server/utils/prisma.ts` ให้ทำ Dynamic Column Migration อัตโนมัติ ปลอดภัยทั้งบน Local SQLite และ Turso Cloud SQLite
+  2. **ระบบสกัดข้อมูลฝั่งเซิร์ฟเวอร์ (`server/utils/clientInfo.ts`)**:
+     - ตรวจจับ Real Client IP ผ่านลำดับชั้น `x-forwarded-for`, `x-real-ip`, `cf-connecting-ip`, `x-vercel-forwarded-for`
+     - จำแนกประเภทอุปกรณ์ (Mobile / Tablet / Desktop), ระบบปฏิบัติการ (iOS, Android, Windows, Mac), และเบราว์เซอร์ รวมถึงแอปเฉพาะทาง (LINE, Facebook In-App Browser)
+     - ผสานข้อมูล Geo-IP จาก Edge Headers (Vercel / Cloudflare) และ GPS จริงจากเบราว์เซอร์
+  3. **ระบบยืนยันสิทธิ์และแก้ไขข้อมูลด้วย PIN บนหน้าบ้าน (In-Place PIN Edit)**:
+     - เพิ่มปุ่ม **`[🔑 แก้ไขด้วย PIN / ปิดรายการ]`** บนการ์ดป้ายทะเบียนทุกใบสำหรับผู้ใช้ทั่วไป
+     - สร้าง Endpoint `POST /api/plates/:id/verify-pin` เพื่อยืนยันรหัส PIN 4 หลัก
+     - ออกแบบ Modal ยืนยัน PIN และ Modal แก้ไขข้อมูลที่มีปุ่มลัด **`[✅ ส่งมอบป้ายให้เจ้าของแล้ว? ปิดรายการทันที]`** ให้เจ้าของปิดเคสได้ด้วยคลิกเดียว
+     - รองรับการแก้ไขข้อมูลป้ายผ่าน `PUT /api/plates/:id` ทั้งด้วย Master Admin Key และ Owner PIN
+
+
 
 
 

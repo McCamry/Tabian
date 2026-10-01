@@ -106,14 +106,23 @@ erDiagram
 
 ---
 
-### 3.3 ตาราง `AuditLog` (บันทึกประวัติการเปลี่ยนแปลง)
+### 3.3 ตาราง `AuditLog` (บันทึกประวัติละเอียด: IP, Browser, OS, Device, Location)
 | ฟิลด์ | ชนิดข้อมูล | เงื่อนไข | คำอธิบาย |
 |---|---|---|---|
-| `id` | `String` | PK | รหัสบันทึก |
-| `plateId` | `String` | NOT NULL | รหัสป้ายทะเบียน |
-| `action` | `String` | NOT NULL | ประเภทการกระทำ (`CREATED`, `RETURNED`, `EDITED`) |
-| `ipAddress` | `String` | NULLABLE | IP Address |
-| `createdAt` | `DateTime` | NOT NULL, Default NOW | วันที่เวลาบันทึก |
+| `id` | `String` | PK | รหัสบันทึก (CUID) |
+| `plateId` | `String` | NOT NULL, FK | รหัสป้ายทะเบียนที่ทำรายการ |
+| `action` | `String` | NOT NULL | `CREATED`, `BATCH_CREATED`, `STATUS_RETURNED`, `PIN_UPDATED`, `ADMIN_UPDATED`, `DELETED` |
+| `ipAddress` | `String` | NULLABLE | Client IP จริง (ดึงจาก X-Forwarded-For, X-Real-IP, Cloudflare, Vercel) |
+| `userAgent` | `String` | NULLABLE | User-Agent Header แบบเต็ม |
+| `deviceType` | `String` | NULLABLE | ประเภทอุปกรณ์ (`MOBILE`, `TABLET`, `DESKTOP`, `UNKNOWN`) |
+| `browser` | `String` | NULLABLE | ชื่อเบราว์เซอร์ (เช่น Google Chrome, Safari, LINE In-App, Facebook In-App) |
+| `os` | `String` | NULLABLE | ระบบปฏิบัติการ (เช่น iOS 17.4, Android 14, Windows 10/11, macOS) |
+| `city` | `String` | NULLABLE | เมือง/จังหวัด จาก Geo-IP (Vercel / Cloudflare) |
+| `country` | `String` | NULLABLE | ประเทศ (เช่น `TH`) |
+| `latitude` | `Float` | NULLABLE | ละติจูด (จาก GPS มือถือ หรือ Geo-IP) |
+| `longitude` | `Float` | NULLABLE | ลองจิจูด (จาก GPS มือถือ หรือ Geo-IP) |
+| `metadata` | `Text/JSON` | NULLABLE | JSON รายละเอียดดิบทั้งหมด (Screen, Languages, Timezone, Full Headers) |
+| `createdAt` | `DateTime` | NOT NULL, Default NOW | วันที่และเวลาที่ทำรายการ |
 
 ---
 

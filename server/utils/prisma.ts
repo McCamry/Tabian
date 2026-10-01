@@ -156,14 +156,43 @@ export async function ensureDatabaseSchema() {
           "action" TEXT NOT NULL,
           "ipAddress" TEXT,
           "userAgent" TEXT,
+          "deviceType" TEXT,
+          "browser" TEXT,
+          "os" TEXT,
+          "city" TEXT,
+          "country" TEXT,
+          "latitude" REAL,
+          "longitude" REAL,
+          "metadata" TEXT,
           "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT "AuditLog_plateId_fkey" FOREIGN KEY ("plateId") REFERENCES "Plate" ("id") ON DELETE CASCADE ON UPDATE CASCADE
         );
       `)
 
+      // Gracefully add any missing columns to existing AuditLog table
+      const auditLogNewColumns = [
+        '"deviceType" TEXT',
+        '"browser" TEXT',
+        '"os" TEXT',
+        '"city" TEXT',
+        '"country" TEXT',
+        '"latitude" REAL',
+        '"longitude" REAL',
+        '"metadata" TEXT',
+      ]
+      for (const col of auditLogNewColumns) {
+        try {
+          await prisma.$executeRawUnsafe(`ALTER TABLE "AuditLog" ADD COLUMN ${col};`)
+        } catch {
+          // Column already exists
+        }
+      }
+
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Plate_normalizedPlate_idx" ON "Plate"("normalizedPlate");`)
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Plate_plateNumber_province_idx" ON "Plate"("plateNumber", "province");`)
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Plate_reportType_status_createdAt_idx" ON "Plate"("reportType", "status", "createdAt");`)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "AuditLog_plateId_createdAt_idx" ON "AuditLog"("plateId", "createdAt");`)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "AuditLog_action_createdAt_idx" ON "AuditLog"("action", "createdAt");`)
 
       schemaInitialized = true
       console.log(`[Database] ${getDatabaseType()} tables initialized successfully!`)
@@ -171,6 +200,29 @@ export async function ensureDatabaseSchema() {
       console.error('[Database] Failed to initialize tables:', createErr)
     }
   }
+
+  // Also run column migrations even if Plate table already existed
+  try {
+    const auditLogNewColumns = [
+      '"deviceType" TEXT',
+      '"browser" TEXT',
+      '"os" TEXT',
+      '"city" TEXT',
+      '"country" TEXT',
+      '"latitude" REAL',
+      '"longitude" REAL',
+      '"metadata" TEXT',
+    ]
+    for (const col of auditLogNewColumns) {
+      try {
+        await prisma.$executeRawUnsafe(`ALTER TABLE "AuditLog" ADD COLUMN ${col};`)
+      } catch {
+        // Column already exists
+      }
+    }
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "AuditLog_plateId_createdAt_idx" ON "AuditLog"("plateId", "createdAt");`)
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "AuditLog_action_createdAt_idx" ON "AuditLog"("action", "createdAt");`)
+  } catch {}
 }
 
 export { prisma }

@@ -1,5 +1,6 @@
 import { prisma, ensureDatabaseSchema } from '~/server/utils/prisma'
 import { normalizePlate } from '~/server/utils/plate'
+import { extractClientAudit } from '~/server/utils/clientInfo'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
@@ -27,6 +28,8 @@ export default defineEventHandler(async (event) => {
   const pinHash = bcrypt.hashSync(String(pin), 10)
   const reportType = sharedInfo.reportType || 'FOUND'
 
+  const clientAudit = extractClientAudit(event, body.clientInfo)
+
   const rawUrl = sharedInfo.sourceUrl || sourceReference
   let formattedSourceUrl: string | null = null
   if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim()) {
@@ -47,7 +50,7 @@ export default defineEventHandler(async (event) => {
       },
     })
 
-    // 2. บันทึกรายการป้ายทั้งหมดลงฐานข้อมูล
+    // 2. บันทึกรายการป้ายทั้งหมดลงฐานข้อมูล พร้อม Audit Log
     const createdPlates = await Promise.all(
       plates.map(async (p: any) => {
         const prefix = (p.platePrefix || '').trim()
@@ -55,7 +58,7 @@ export default defineEventHandler(async (event) => {
         const prov = (p.province || 'ระยอง').trim()
         const normalized = normalizePlate(prefix, num, prov)
 
-        return prisma.plate.create({
+        const newPlate = await prisma.plate.create({
           data: {
             reportType,
             vehicleType: p.vehicleType || 'CAR',
@@ -69,12 +72,34 @@ export default defineEventHandler(async (event) => {
             contactName: (p.contactName && p.contactName.trim()) || sharedInfo.contactName.trim(),
             contactPhone: (p.contactPhone && p.contactPhone.trim()) || sharedInfo.contactPhone.trim(),
             pickupLocation: (p.pickupLocation && p.pickupLocation.trim()) || sharedInfo.pickupLocation.trim(),
+            latitude: p.latitude || sharedInfo.latitude || clientAudit.latitude || null,
+            longitude: p.longitude || sharedInfo.longitude || clientAudit.longitude || null,
             status: 'ACTIVE',
             source: sourceType === 'IMAGE_OCR' ? 'AI_OCR_BATCH' : 'SOCIAL_IMPORT',
             pinHash,
             batchImportId: batchImport.id,
           },
         })
+
+        // บันทึก AuditLog รายป้าย
+        await prisma.auditLog.create({
+          data: {
+            plateId: newPlate.id,
+            action: 'BATCH_CREATED',
+            ipAddress: clientAudit.ipAddress,
+            userAgent: clientAudit.userAgent,
+            deviceType: clientAudit.deviceType,
+            browser: clientAudit.browser,
+            os: clientAudit.os,
+            city: clientAudit.city,
+            country: clientAudit.country,
+            latitude: clientAudit.latitude,
+            longitude: clientAudit.longitude,
+            metadata: clientAudit.metadata,
+          },
+        }).catch((logErr) => console.error('[Batch AuditLog Error]:', logErr))
+
+        return newPlate
       })
     )
 

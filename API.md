@@ -13,6 +13,7 @@
 | `POST` | `/api/plates` | บันทึกข้อมูลป้ายเดี่ยว (เจอ หรือ หา) | สาธารณะ (มี Rate Limit) |
 | `POST` | `/api/plates/batch` | บันทึกป้ายทะเบียนชุดใหญ่ (Batch Save) | สาธารณะ (มี Rate Limit) |
 | `PUT` | `/api/plates/:id` | แก้ไขข้อมูลป้ายทะเบียนและสถานะ | ต้องใช้ Master Admin Key หรือ PIN |
+| `POST` | `/api/plates/:id/verify-pin` | ยืนยันรหัส PIN 4 หลักของป้ายทะเบียน | สาธารณะ |
 | `DELETE` | `/api/plates/:id` | ลบรายการป้ายทะเบียน | ต้องใช้ Master Admin Key หรือ PIN |
 | `POST` | `/api/admin/verify` | ตรวจสอบรหัสผ่าน Master Admin Key | สาธารณะ (Rate Limited) |
 | `POST` | `/api/ai/ocr-multi` | ส่งภาพถ่ายเพื่ออ่านทะเบียนหลายแผ่นด้วย AI | สาธารณะ (มี Rate Limit) |

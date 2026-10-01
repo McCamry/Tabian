@@ -1,5 +1,6 @@
 import { prisma, ensureDatabaseSchema } from '~/server/utils/prisma'
 import { normalizePlate } from '~/server/utils/plate'
+import { extractClientAudit } from '~/server/utils/clientInfo'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
@@ -75,13 +76,23 @@ export default defineEventHandler(async (event) => {
       },
     })
 
-    // บันทึก Audit Log
+    const clientAudit = extractClientAudit(event, body.clientInfo)
+
+    // บันทึก Audit Log ละเอียด
     await prisma.auditLog.create({
       data: {
         plateId: id,
-        action: isAdmin ? 'ADMIN_UPDATED' : 'UPDATED',
-        userAgent: getHeader(event, 'user-agent') || null,
-        ipAddress: getRequestIP(event) || null,
+        action: isAdmin ? 'ADMIN_UPDATED' : (status === 'RETURNED' && plate.status !== 'RETURNED' ? 'STATUS_RETURNED' : 'PIN_UPDATED'),
+        ipAddress: clientAudit.ipAddress,
+        userAgent: clientAudit.userAgent,
+        deviceType: clientAudit.deviceType,
+        browser: clientAudit.browser,
+        os: clientAudit.os,
+        city: clientAudit.city,
+        country: clientAudit.country,
+        latitude: clientAudit.latitude,
+        longitude: clientAudit.longitude,
+        metadata: clientAudit.metadata,
       },
     }).catch((logErr) => console.error('Error creating audit log:', logErr))
 

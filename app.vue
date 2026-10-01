@@ -73,7 +73,52 @@ const adminPasswordInput = ref('')
 const adminLoginError = ref('')
 const isVerifyingAdmin = ref(false)
 
-// ---------------- Admin Edit Modal State ----------------
+// ---------------- Client Info & Geolocation Audit Helper ----------------
+const userGpsCoords = ref<{ latitude: number; longitude: number; accuracy?: number } | null>(null)
+
+function requestGpsLocation() {
+  if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        userGpsCoords.value = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        }
+      },
+      () => {},
+      { timeout: 6000, enableHighAccuracy: false, maximumAge: 300000 }
+    )
+  }
+}
+
+function getClientPayload() {
+  if (typeof window === 'undefined') return null
+  return {
+    screen: {
+      width: window.screen?.width || null,
+      height: window.screen?.height || null,
+      colorDepth: window.screen?.colorDepth || null,
+      pixelRatio: window.devicePixelRatio || 1,
+    },
+    language: navigator.language || null,
+    languages: navigator.languages ? [...navigator.languages] : [],
+    timezone: Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : null,
+    platform: (navigator as any).userAgentData?.platform || navigator.platform || null,
+    online: navigator.onLine,
+    gps: userGpsCoords.value || null,
+  }
+}
+
+// ---------------- PIN-Protected Edit State ----------------
+const showPinPromptModal = ref(false)
+const plateForPin = ref<PlateItem | null>(null)
+const inputPin = ref('')
+const isVerifyingPin = ref(false)
+const pinError = ref('')
+const verifiedPin = ref('')
+
+// ---------------- Plate Edit Modal State (PIN & Admin) ----------------
 const showEditModal = ref(false)
 const isSubmittingEdit = ref(false)
 const editingPlate = ref<PlateItem | null>(null)
@@ -88,6 +133,7 @@ const editForm = reactive({
   pickupLocation: '',
   status: 'ACTIVE' as 'ACTIVE' | 'RETURNED' | 'CANCELLED',
   sourceUrl: '',
+  pin: '',
 })
 
 // ---------------- Admin Delete Modal State ----------------
@@ -212,7 +258,10 @@ async function submitSinglePlate() {
   try {
     const res = await $fetch<any>('/api/plates', {
       method: 'POST',
-      body: singleForm.value,
+      body: {
+        ...singleForm.value,
+        clientInfo: getClientPayload(),
+      },
     })
 
     if (res.success) {
@@ -305,6 +354,7 @@ async function submitOcrBatch() {
           sourceImageUrl: ocrShared.value.sourceImageUrl || ocrImage.value || null,
         },
         sourceType: 'IMAGE_OCR',
+        clientInfo: getClientPayload(),
       },
     })
     if (res.success) {
@@ -414,6 +464,7 @@ async function submitSocialBatch() {
         },
         sourceType: 'SOCIAL_POST_TEXT',
         rawContent: socialRawText.value,
+        clientInfo: getClientPayload(),
       },
     })
     if (res.success) {
@@ -503,6 +554,9 @@ onMounted(async () => {
       isAdmin.value = true
     }
   }
+
+  // Request GPS location passively for geolocation audit trail
+  requestGpsLocation()
 
   fetchProvinces()
   fetchStats()
@@ -657,7 +711,44 @@ function logoutAdmin() {
   showToast('🔒 ออกจากโหมดผู้ดูแลระบบแล้ว')
 }
 
-function openEditPlateModal(plate: PlateItem) {
+function openPinPrompt(plate: PlateItem) {
+  if (isAdmin.value) {
+    openEditPlateModal(plate)
+    return
+  }
+  plateForPin.value = plate
+  inputPin.value = ''
+  pinError.value = ''
+  showPinPromptModal.value = true
+}
+
+async function verifyPinAndOpenEdit() {
+  if (!plateForPin.value) return
+  const pin = inputPin.value.trim()
+  if (pin.length !== 4) {
+    pinError.value = 'กรุณากรอกรหัส PIN 4 หลักให้ครบถ้วน'
+    return
+  }
+  isVerifyingPin.value = true
+  pinError.value = ''
+  try {
+    const res = await $fetch<any>(`/api/plates/${plateForPin.value.id}/verify-pin`, {
+      method: 'POST',
+      body: { pin },
+    })
+    if (res.valid) {
+      verifiedPin.value = pin
+      showPinPromptModal.value = false
+      openEditPlateModal(plateForPin.value, pin)
+    }
+  } catch (err: any) {
+    pinError.value = err.data?.statusMessage || 'รหัส PIN ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'
+  } finally {
+    isVerifyingPin.value = false
+  }
+}
+
+function openEditPlateModal(plate: PlateItem, pin?: string) {
   editingPlate.value = plate
   editForm.reportType = plate.reportType
   editForm.vehicleType = plate.vehicleType
@@ -669,6 +760,7 @@ function openEditPlateModal(plate: PlateItem) {
   editForm.pickupLocation = plate.pickupLocation
   editForm.status = plate.status
   editForm.sourceUrl = plate.sourceUrl || ''
+  editForm.pin = pin || verifiedPin.value || ''
   showEditModal.value = true
 }
 
@@ -676,18 +768,23 @@ async function submitEditPlate() {
   if (!editingPlate.value) return
   isSubmittingEdit.value = true
   try {
+    const headers: Record<string, string> = {}
+    if (isAdmin.value && adminKey.value) {
+      headers['x-admin-key'] = adminKey.value
+    }
     const res = await $fetch<any>(`/api/plates/${editingPlate.value.id}`, {
       method: 'PUT',
-      headers: {
-        'x-admin-key': adminKey.value,
-      },
+      headers,
       body: {
         ...editForm,
+        pin: editForm.pin || verifiedPin.value,
+        clientInfo: getClientPayload(),
       },
     })
     if (res.success) {
-      showToast('✅ แก้ไขข้อมูลป้ายทะเบียนสำเร็จ')
+      showToast('✅ บันทึกการแก้ไขข้อมูลสำเร็จ')
       showEditModal.value = false
+      verifiedPin.value = ''
       await fetchPlates()
       await fetchStats()
     }
@@ -1261,6 +1358,26 @@ function formatDate(dateStr: string) {
                   <span>ลบ</span>
                 </button>
               </div>
+            </div>
+
+            <!-- Owner Action Bar (Visible to regular users when not in Admin Mode) -->
+            <div 
+              v-else 
+              class="pt-2 border-t border-slate-100 -mx-3.5 -mb-3.5 p-2.5 px-3.5 bg-slate-50/70 rounded-b-2xl flex items-center justify-between"
+            >
+              <div class="flex items-center space-x-1 text-[11px] text-slate-500">
+                <span>🔐</span>
+                <span>เจ้าของป้าย:</span>
+              </div>
+              <button 
+                type="button"
+                @click="openPinPrompt(plate)"
+                class="px-2.5 py-1 rounded-lg bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 text-[11px] font-semibold active:scale-95 transition flex items-center space-x-1 border border-slate-200 shadow-2xs"
+                title="ใช้รหัส PIN 4 หลักที่เคยตั้งไว้เพื่อแก้ไขข้อมูลหรือแจ้งส่งมอบแล้ว"
+              >
+                <span>🔑</span>
+                <span>แก้ไขด้วย PIN / ปิดรายการ</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1910,7 +2027,70 @@ function formatDate(dateStr: string) {
       </div>
     </div>
 
-    <!-- ==================== Modal: แก้ไขข้อมูลป้ายทะเบียน (Admin Edit) ==================== -->
+    <!-- ==================== Modal: ยืนยันรหัส PIN 4 หลักเพื่อแก้ไขข้อมูล ==================== -->
+    <div 
+      v-if="showPinPromptModal && plateForPin" 
+      class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+      @click="showPinPromptModal = false"
+    >
+      <div class="bg-white rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl my-auto animate-scale-up" @click.stop>
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-2xl">🔐</span>
+            <div>
+              <h3 class="font-bold text-base text-slate-900">ยืนยันความเป็นเจ้าของ</h3>
+              <p class="text-[11px] text-slate-500">
+                ป้าย {{ plateForPin.platePrefix }} {{ plateForPin.plateNumber }} {{ plateForPin.province }}
+              </p>
+            </div>
+          </div>
+          <button @click="showPinPromptModal = false" class="text-slate-400 hover:text-slate-600 p-1 text-lg">✕</button>
+        </div>
+
+        <form @submit.prevent="verifyPinAndOpenEdit" class="space-y-4 text-xs">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1.5">
+              กรอกรหัส PIN 4 หลัก (ที่ตั้งไว้ตอนลงข้อมูล)
+            </label>
+            <input 
+              v-model="inputPin" 
+              type="password" 
+              inputmode="numeric" 
+              pattern="[0-9]*" 
+              maxlength="4" 
+              placeholder="••••" 
+              class="w-full text-center text-3xl font-mono tracking-widest px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition" 
+              autofocus 
+              required 
+            />
+            <p v-if="pinError" class="text-xs text-rose-600 font-medium mt-2 flex items-center space-x-1">
+              <span>⚠️</span>
+              <span>{{ pinError }}</span>
+            </p>
+          </div>
+
+          <div class="flex space-x-2 pt-1">
+            <button 
+              type="button" 
+              @click="showPinPromptModal = false"
+              class="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition text-xs"
+            >
+              ยกเลิก
+            </button>
+            <button 
+              type="submit" 
+              :disabled="isVerifyingPin || inputPin.length !== 4"
+              class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold transition flex items-center justify-center space-x-1 shadow-sm text-xs"
+            >
+              <span v-if="isVerifyingPin" class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+              <span>{{ isVerifyingPin ? 'กำลังตรวจสอบ...' : 'เข้าสู่หน้าแก้ไข' }}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ==================== Modal: แก้ไขข้อมูลป้ายทะเบียน (PIN / Admin Edit) ==================== -->
     <div 
       v-if="showEditModal" 
       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in"
@@ -1922,10 +2102,31 @@ function formatDate(dateStr: string) {
             <span class="text-2xl">✏️</span>
             <div>
               <h3 class="font-bold text-base text-slate-900">แก้ไขข้อมูลป้ายทะเบียน</h3>
-              <p class="text-[11px] text-slate-500">สิทธิ์ผู้ดูแลระบบ (Admin Edit)</p>
+              <p class="text-[11px] font-medium" :class="isAdmin ? 'text-amber-600' : 'text-blue-600'">
+                {{ isAdmin ? '🛡️ สิทธิ์ผู้ดูแลระบบ (Admin Edit)' : '🔑 สิทธิ์เจ้าของรายการ (PIN Verified)' }}
+              </p>
             </div>
           </div>
           <button @click="showEditModal = false" class="text-slate-400 hover:text-slate-600 p-1 text-lg">✕</button>
+        </div>
+
+        <!-- Quick Status Toggle to RETURNED if not already RETURNED -->
+        <div 
+          v-if="editForm.status !== 'RETURNED'" 
+          class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between"
+        >
+          <div>
+            <p class="text-xs font-bold text-emerald-800">ส่งมอบป้ายให้เจ้าของแล้ว?</p>
+            <p class="text-[10px] text-emerald-600">กดปุ่มเพื่อเปลี่ยนสถานะเป็นส่งมอบแล้ว</p>
+          </div>
+          <button 
+            type="button"
+            @click="editForm.status = 'RETURNED'"
+            class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold active:scale-95 transition flex items-center space-x-1 shadow-2xs"
+          >
+            <span>✅</span>
+            <span>ปิดรายการทันที</span>
+          </button>
         </div>
 
         <form @submit.prevent="submitEditPlate" class="space-y-3 text-xs">
