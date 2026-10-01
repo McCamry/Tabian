@@ -1,4 +1,4 @@
-import { getGeminiClient } from '~/server/utils/gemini'
+import { generateWithGeminiFallback, getGeminiApiKeys } from '~/server/utils/gemini'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -8,18 +8,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'กรุณาวางข้อความจากโพสต์โซเชียลมีเดีย' })
   }
 
-  const gemini = getGeminiClient()
+  const keys = getGeminiApiKeys()
 
   // หากมี GEMINI_API_KEY
-  if (gemini) {
+  if (keys.length > 0) {
     try {
-      const model = gemini.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-        generationConfig: {
-          responseMimeType: 'application/json',
-        },
-      })
-
       const prompt = `คุณคือระบบ AI อัจฉริยะสำหรับสกัดข้อมูลป้ายทะเบียนรถที่สูญหายหรือพบช่วงน้ำท่วม จากข้อความโซเชียลมีเดีย (Facebook / LINE) ซึ่งอาจประกอบด้วย "เนื้อหาโพสต์หลัก" และ "คอมเมนต์ย่อยหลายคอมเมนต์" ที่มีคนมาช่วยคอมเมนต์แจ้งเบาะแส
 
 จงวิเคราะห์ข้อความต่อไปนี้อย่างละเอียดรอบคอบ โดยอ่านทั้งโพสต์และทุกๆ คอมเมนต์:
@@ -58,20 +51,27 @@ export default defineEventHandler(async (event) => {
   ]
 }`
 
-      const result = await model.generateContent(prompt)
-      const responseText = result.response.text()
-      const parsed = JSON.parse(responseText)
+      const { text, modelUsed } = await generateWithGeminiFallback({
+        contents: prompt,
+        generationConfig: {
+          responseMimeType: 'application/json',
+        },
+      })
+
+      const cleanJson = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
+      const parsed = JSON.parse(cleanJson)
 
       return {
         success: true,
         isLiveAI: true,
+        modelUsed,
         data: parsed,
       }
     } catch (err: any) {
       console.error('Gemini Social Parser Error:', err)
       throw createError({
         statusCode: 500,
-        statusMessage: `เกิดข้อผิดพลาดในการเรียกใช้ Gemini API: ${err.message || 'ไม่ทราบสาเหตุ'}`,
+        statusMessage: err.message || 'เกิดข้อผิดพลาดในการประมวลผลข้อความด้วย AI',
       })
     }
   }
@@ -88,36 +88,40 @@ export default defineEventHandler(async (event) => {
   for (const m of matches) {
     const prefix = (m[1] || '').trim()
     const number = (m[2] || '').trim()
-    const province = (m[3] || 'เชียงใหม่').trim()
+    const province = (m[3] || 'ระยอง').trim()
 
     if (prefix && number) {
-      const isMotorcycle = rawText.includes('มอเตอร์ไซค์') || rawText.includes('มอไซค์') || prefix.length >= 3
       extractedPlates.push({
-        vehicleType: isMotorcycle ? 'MOTORCYCLE' : 'CAR',
+        vehicleType: 'CAR',
         platePrefix: prefix,
         plateNumber: number,
-        province: province || 'เชียงใหม่',
+        province,
+        contactName: 'ผู้ประสานงาน',
+        contactPhone: extractedPhone,
+        pickupLocation: 'จุดประสานงานช่วยเหลือน้ำท่วม',
       })
     }
-  }
-
-  // ถ้า Regex ไม่พบ ให้มีตัวอย่างเริ่มต้น
-  if (extractedPlates.length === 0) {
-    extractedPlates.push(
-      { vehicleType: 'CAR', platePrefix: 'กข', plateNumber: '7890', province: 'เชียงใหม่' },
-      { vehicleType: 'MOTORCYCLE', platePrefix: '1กง', plateNumber: '555', province: 'ลำพูน' }
-    )
   }
 
   return {
     success: true,
     isLiveAI: false,
-    message: 'สกัดด้วยระบบ Regex อัตโนมัติ (ใส่ GEMINI_API_KEY ใน .env เพื่อความแม่นยำสูงสุดด้วย Gemini NLP)',
+    message: 'สกัดข้อมูลด้วยกฎพื้นฐาน (กรุณาใส่ GEMINI_API_KEY เพื่อเปิดใช้ AI เต็มประสิทธิภาพ)',
     data: {
-      contactName: 'ผู้ประสานงานกู้ภัยจุดเกิดเหตุ',
+      contactName: 'ผู้ประสานงาน',
       contactPhone: extractedPhone,
-      pickupLocation: 'จุดประสานงานตามที่ระบุในโพสต์',
-      plates: extractedPlates,
-    },
+      pickupLocation: 'จุดประสานงานช่วยเหลือน้ำท่วม',
+      plates: extractedPlates.length > 0 ? extractedPlates : [
+        {
+          vehicleType: 'CAR',
+          platePrefix: 'กข',
+          plateNumber: '1234',
+          province: 'ระยอง',
+          contactName: 'ผู้ประสานงาน',
+          contactPhone: extractedPhone,
+          pickupLocation: 'จุดประสานงานช่วยเหลือน้ำท่วม',
+        }
+      ],
+    }
   }
 })

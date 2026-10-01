@@ -1,4 +1,4 @@
-import { getGeminiClient } from '~/server/utils/gemini'
+import { generateWithGeminiFallback, getGeminiApiKeys } from '~/server/utils/gemini'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -120,17 +120,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // 4. Use Gemini 2.5 Flash to parse structured plate info
-  const gemini = getGeminiClient()
+  // 4. Use Gemini Multi-Model Cascade to parse structured plate info
+  const keys = getGeminiApiKeys()
   let parsedPlates: any = null
 
-  if (gemini) {
+  if (keys.length > 0) {
     try {
-      const model = gemini.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-        generationConfig: { responseMimeType: 'application/json' },
-      })
-
       const prompt = `คุณคือระบบ AI อัจฉริยะสำหรับสกัดข้อมูลป้ายทะเบียนรถที่สูญหายหรือพบช่วงน้ำท่วม จากเนื้อหาที่ดึงมาจากหน้าเว็บ โพสต์โซเชียล หรือกระทู้สนทนา ซึ่งอาจมีทั้งเนื้อหาหลักและคอมเมนต์ย่อย
 
 จงวิเคราะห์ข้อความต่อไปนี้อย่างละเอียดรอบคอบ โดยอ่านทั้งโพสต์หลักและทุกคอมเมนต์:
@@ -169,8 +164,12 @@ export default defineEventHandler(async (event) => {
   ]
 }`
 
-      const result = await model.generateContent(prompt)
-      parsedPlates = JSON.parse(result.response.text())
+      const { text } = await generateWithGeminiFallback({
+        contents: prompt,
+        generationConfig: { responseMimeType: 'application/json' },
+      })
+      const cleanJson = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
+      parsedPlates = JSON.parse(cleanJson)
     } catch (err: any) {
       console.error('Gemini parse error in fetch-url:', err)
     }

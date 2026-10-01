@@ -151,6 +151,28 @@
      - จดจำสถานะใน `sessionStorage` เพื่อความต่อเนื่องในการทำงาน
      - มีหน้าต่าง Modal ยืนยันก่อนลบ (Delete Confirmation Dialog) และ Modal ฟอร์มแก้ไขข้อมูลป้ายแบบครอบคลุมทุกช่อง
 
+---
+
+## ADR-016: Multi-Model Cascade Fallback และ Multi-Key Rotation สำหรับป้องกันโควต้า AI เต็ม (Gemini API)
+- **สถานะ**: อนุมัติ (Approved)
+- **บริบท**:
+  - การใช้งาน Google Gemini API บน Free Tier สำหรับโมเดลเดี่ยว (เช่น `gemini-2.5-flash`) มีข้อจำกัดโควต้าเข้มงวด (เช่น 20 requests/วัน) ทำให้เกิดข้อผิดพลาด `429 Too Many Requests` บ่อยครั้งในสถานการณ์ที่มีผู้ใช้งานพร้อมกัน
+  - โมเดลรุ่นเก่าอย่าง `gemini-1.5-flash` หรือ `gemini-2.0-flash` ถูกปิดการให้บริการ/เลิกใช้ใน v1beta แล้ว
+- **การตัดสินใจ**:
+  1. นำสถาปัตยกรรม **Multi-Model Cascade Fallback** มาใช้ โดยกำหนดลำดับโมเดล:
+     - `gemini-3.5-flash` (โมเดลหลัก: ฉลาด รวดเร็ว รองรับ Vision & Structured JSON)
+     - `gemini-3.5-flash-lite` (โมเดลสำรองลำดับแรก)
+     - `gemini-flash-lite-latest` (โมเดลสำรองลำดับสอง)
+     - `gemini-3.8-flash` (โมเดลสำรองลำดับสาม)
+     เนื่องจาก Google AI Studio แยกการนับโควต้าอิสระตามชื่อโมเดล ทำให้การสลับโมเดลอัตโนมัติเป็นการขยายโควต้ารวมเพิ่มขึ้นหลายเท่าตัว
+  2. พัฒนาระบบ **Multi-Key Rotation**:
+     - รองรับคีย์หลัก `GEMINI_API_KEY`
+     - รองรับคีย์สำรอง `GEMINI_API_KEY_BACKUP`
+     - รองรับการใส่หลายคีย์คั่นด้วยเครื่องหมายจุลภาคผ่าน `GEMINI_API_KEYS`
+  3. ปรับปรุงศูนย์กลางตรรกะเรียกใช้งาน `server/utils/gemini.ts` ผ่านฟังก์ชัน `generateWithGeminiFallback` ครอบคลุมทั้ง Text Prompt, Multi-turn Chat, และ Multimodal Image OCR โดยส่งต่อไปยัง Endpoint ทั้งหมด (`/api/ai/ocr-multi`, `/api/ai/parse-social`, `/api/ai/fetch-url`)
+  4. หากทุกโมเดลและทุกคีย์ติด Limit พร้อมกัน ระบบจะส่งข้อความแจ้งเตือนภาษาไทยที่ชัดเจน แนะนำให้ผู้ใช้เว้นช่วง 1-2 นาที หรือเพิ่ม Backup Key
+
+
 
 
 

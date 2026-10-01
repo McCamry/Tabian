@@ -25,10 +25,14 @@ DATABASE_URL="file:./tabian.db"
 # DATABASE_URL="postgresql://user:password@localhost:5432/tabian?schema=public"
 
 # ==========================================
-# 3. Google Gemini AI API (สำหรับ Vision & OCR)
+# 3. Google Gemini AI API (สำหรับ Vision, OCR & Cascade Fallback)
 # ==========================================
 # รับ API Key ฟรีได้จาก https://aistudio.google.com/
+# รองรับการระบุคีย์เดียว หรือหลายคีย์คั่นด้วยจุลภาค (key1,key2) เพื่อสลับคีย์อัตโนมัติเมื่อโควต้าเต็ม
 GEMINI_API_KEY=your_gemini_api_key_here
+# คีย์สำรอง (ทางเลือก):
+# GEMINI_API_KEY_BACKUP=your_backup_gemini_key
+# GEMINI_API_KEYS=key1,key2,key3
 
 # ==========================================
 # 4. Security & Admin Moderation
@@ -55,8 +59,9 @@ UPLOAD_DIR="./public/uploads"
 | ตัวแปร | ความจำเป็น | ค่าเริ่มต้น | คำอธิบาย |
 |---|---|---|---|
 | `DATABASE_URL` | **จำเป็น (Required)** | `file:./prisma/tabian.db` | Connection String ไปยังฐานข้อมูล SQLite หรือ PostgreSQL |
-| `GEMINI_API_KEY` | **จำเป็นสำหรับฟังก์ชัน AI** | ไม่มี | คีย์สำหรับเรียกใช้งาน Gemini Multimodal Vision API |
+| `GEMINI_API_KEY` | **จำเป็นสำหรับฟังก์ชัน AI** | ไม่มี | คีย์สำหรับเรียกใช้งาน Gemini API (รองรับหลายคีย์คั่นด้วย `,` เพื่อทำ Key Rotation) |
+| `GEMINI_API_KEY_BACKUP` | ทางเลือก | ไม่มี | คีย์สำรองที่จะถูกเรียกใช้เมื่อคีย์หลักติดโควต้าเต็ม (429) |
 | `APP_URL` | แนะนำสำหรับ Production | `http://localhost:3000` | โดเมนหลักของเว็บ ใช้สร้าง Open Graph Image และ LINE Share Links |
-| `ADMIN_SECRET_KEY` | **จำเป็น** | ไม่มี | คีย์ลับสำหรับแอดมินใช้ลบข้อมูลที่ไม่เหมาะสม |
+| `ADMIN_SECRET_KEY` | **จำเป็น** | `admin1234` | คีย์ลับสำหรับแอดมินใช้แก้ไขหรือลบข้อมูลที่ไม่เหมาะสม |
 | `LINE_LIFF_ID` | ทางเลือก | ว่าง | ID สำหรับการทำงานร่วมกับ LINE Front-end Framework |
 | `PORT` | ทางเลือก | `3000` | พอร์ตที่ใช้รันเซิร์ฟเวอร์ |
