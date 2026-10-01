@@ -18,8 +18,12 @@ APP_URL=http://localhost:3000
 # ==========================================
 # 2. Database Connection
 # ==========================================
-# สำหรับ SQLite (ค่าเริ่มต้น อยู่ในโฟลเดอร์ prisma/):
+# สำหรับ SQLite ในเครื่อง / Render (ค่าเริ่มต้น):
 DATABASE_URL="file:./tabian.db"
+
+# สำหรับ Vercel Serverless (แนะนำใช้ Turso Cloud SQLite ฟรี):
+# TURSO_DATABASE_URL="libsql://your-db-name-your-user.turso.io"
+# TURSO_AUTH_TOKEN="your_turso_auth_token"
 
 # สำหรับ PostgreSQL (กรณี Production สเกลใหญ่):
 # DATABASE_URL="postgresql://user:password@localhost:5432/tabian?schema=public"
@@ -58,7 +62,9 @@ UPLOAD_DIR="./public/uploads"
 
 | ตัวแปร | ความจำเป็น | ค่าเริ่มต้น | คำอธิบาย |
 |---|---|---|---|
-| `DATABASE_URL` | **จำเป็น (Required)** | `file:./prisma/tabian.db` | Connection String ไปยังฐานข้อมูล SQLite หรือ PostgreSQL |
+| `DATABASE_URL` | **จำเป็น (Required)** | `file:./tabian.db` | Connection String ไปยังฐานข้อมูล SQLite ในเครื่องหรือ Render |
+| `TURSO_DATABASE_URL` | แนะนำสำหรับ Vercel | ไม่มี | Connection URL สำหรับ Turso Cloud SQLite เช่น `libsql://tabian-xxx.turso.io` |
+| `TURSO_AUTH_TOKEN` | จำเป็นเมื่อใช้ Turso | ไม่มี | Auth Token สำหรับยืนยันสิทธิ์กับ Turso Cloud Database |
 | `GEMINI_API_KEY` | **จำเป็นสำหรับฟังก์ชัน AI** | ไม่มี | คีย์สำหรับเรียกใช้งาน Gemini API (รองรับหลายคีย์คั่นด้วย `,` เพื่อทำ Key Rotation) |
 | `GEMINI_API_KEY_BACKUP` | ทางเลือก | ไม่มี | คีย์สำรองที่จะถูกเรียกใช้เมื่อคีย์หลักติดโควต้าเต็ม (429) |
 | `APP_URL` | แนะนำสำหรับ Production | `http://localhost:3000` | โดเมนหลักของเว็บ ใช้สร้าง Open Graph Image และ LINE Share Links |

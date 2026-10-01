@@ -172,6 +172,24 @@
   3. ปรับปรุงศูนย์กลางตรรกะเรียกใช้งาน `server/utils/gemini.ts` ผ่านฟังก์ชัน `generateWithGeminiFallback` ครอบคลุมทั้ง Text Prompt, Multi-turn Chat, และ Multimodal Image OCR โดยส่งต่อไปยัง Endpoint ทั้งหมด (`/api/ai/ocr-multi`, `/api/ai/parse-social`, `/api/ai/fetch-url`)
   4. หากทุกโมเดลและทุกคีย์ติด Limit พร้อมกัน ระบบจะส่งข้อความแจ้งเตือนภาษาไทยที่ชัดเจน แนะนำให้ผู้ใช้เว้นช่วง 1-2 นาที หรือเพิ่ม Backup Key
 
+---
+
+## ADR-017: สถาปัตยกรรม Dual-Engine Database (Local SQLite + Turso Cloud SQLite) รองรับการ Deploy บน Vercel Serverless
+- **สถานะ**: อนุมัติ (Approved)
+- **บริบท**:
+  - แพลตฟอร์ม Vercel ทำงานแบบ Serverless ไร้เซิร์ฟเวอร์ถาวร (Ephemeral Environment) ทำให้ไม่สามารถเขียนหรือเก็บไฟล์ฐานข้อมูล SQLite ในเครื่อง (`tabian.db`) ถาวรได้เหมือนบน Persistent Node.js Server (เช่น Render)
+  - ผู้ใช้ต้องการทางเลือกในการย้ายไประบบ Vercel เพื่อใช้ประโยชน์จาก Global Edge CDN และความเร็วในการตอบสนองที่สูงขึ้น
+  - การย้ายระบบต้องไม่ทำลายการทำงานบนเครื่อง Local หรือบน Render ที่ใช้อยู่ในปัจจุบัน
+- **การตัดสินใจ**:
+  1. เลือกใช้ **Turso (LibSQL)** เป็น Cloud SQLite สำหรับ Vercel เนื่องจากเป็น SQLite Fork โดยตรง ไวยากรณ์ตาราง ชนิดข้อมูล และ DDL เดิมทำงานได้ 100% โดยไม่ต้องดัดแปลงสกีมา
+  2. ติดตั้ง `@libsql/client` และ `@prisma/adapter-libsql`
+  3. ปรับปรุง `server/utils/prisma.ts` ให้เป็น **Dual-Engine Auto-Detection**:
+     - หากตรวจพบตัวแปร `TURSO_DATABASE_URL` (และ `TURSO_AUTH_TOKEN`): จะเชื่อมต่อไปยัง Turso Cloud SQLite ผ่าน `PrismaLibSql` Driver Adapter โดยอัตโนมัติ
+     - หากไม่มี: จะสลับไปใช้งาน Local SQLite (`file:./tabian.db`) ผ่าน Dynamic Path Resolution ตามเดิม
+  4. ระบบ **Zero-Fail Auto-Initialization (`ensureDatabaseSchema`)** ยังคงทำงานครอบคลุมทั้ง Turso และ Local SQLite โดยจะทดสอบและรัน DDL สร้างตารางและอินเด็กซ์อัตโนมัติหากพบว่าเป็นฐานข้อมูลเปล่า
+  5. ปรับปรุงสคริปต์ `build` ใน `package.json` ให้เป็น `prisma generate && nuxt build` เพื่อความเข้ากันได้ 100% กับกระบวนการ Build บน Serverless ของ Vercel
+
+
 
 
 

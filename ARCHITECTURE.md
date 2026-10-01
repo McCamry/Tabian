@@ -55,7 +55,7 @@ graph TD
 | **Server Engine** | **Nitro (Nuxt Built-in Engine)** | รัน API Serverless หรือ Node.js Server ได้อย่างเบาและรวดเร็ว |
 | **Styling & Design** | **Tailwind CSS + Tailwind Aspect Ratio** | ออกแบบ UI Mobile-First ระบบ Responsive UI และรองรับ Touch Targets ขนาดใหญ่ |
 | **Icons** | **Lucide Vue Next** | ไอคอน Vector ชัดเจน โหลดเฉพาะที่ใช้งาน |
-| **Database ORM** | **Prisma ORM** | Type-safe Database Access รองรับทั้ง SQLite (Local/Dev/Production ขนาดเล็ก) และ PostgreSQL |
+| **Database ORM** | **Prisma ORM (with LibSQL Adapter)** | Type-safe Database Access รองรับ Dual-Engine: Local SQLite (เครื่อง/Render) และ Turso Cloud SQLite (สำหรับ Vercel Serverless) |
 | **AI Vision & NLP** | **Google Gemini 2.5 Flash API** | แม่นยำสูงกับฟอนต์ภาษาไทย ป้ายเปื้อนโคลน และรองรับ Structured JSON Output |
 | **Image Processing** | **Sharp (Server) + Canvas (Client-side Resize)** | บีบอัดรูปภาพเป็น WebP ก่อนส่งขึ้นเซิร์ฟเวอร์ ประหยัดเน็ตมือถือ |
 | **Social Sharing** | **LINE URL Scheme & Open Graph Protocol** | แผงพรีวิวสวยงามเมื่อแชร์ป้ายที่เจอลง LINE กลุ่มหรือ Facebook |

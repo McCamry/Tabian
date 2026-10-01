@@ -1,4 +1,4 @@
-import { prisma, ensureDatabaseSchema } from '~/server/utils/prisma'
+import { prisma, ensureDatabaseSchema, getDatabaseType } from '~/server/utils/prisma'
 
 export default defineEventHandler(async () => {
   await ensureDatabaseSchema()
@@ -19,10 +19,11 @@ export default defineEventHandler(async () => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     database: {
+      type: getDatabaseType(),
       status: dbStatus,
       plateCount,
       error: errorMessage,
-      url: process.env.DATABASE_URL ? '[CONFIGURED]' : '[MISSING]',
+      url: (process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL) ? '[CONFIGURED]' : '[DEFAULT]',
     },
     service: 'Tabian API',
   }

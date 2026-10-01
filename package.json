@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "prisma generate && prisma db push && nuxt build",
-    "start": "prisma db push --skip-generate && node .output/server/index.mjs",
+    "build": "prisma generate && nuxt build",
+    "start": "node .output/server/index.mjs",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@libsql/client": "^0.18.0",
+    "@prisma/adapter-libsql": "^7.10.0",
     "@prisma/client": "^6.2.0",
     "bcryptjs": "^2.4.3",
     "lucide-vue-next": "^0.474.0",
