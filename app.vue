@@ -22,6 +22,8 @@ interface PlateItem {
   contactPhone: string
   contactPhoneMasked: string
   pickupLocation: string
+  latitude?: number | null
+  longitude?: number | null
   status: 'ACTIVE' | 'RETURNED' | 'CANCELLED'
   source: string
   createdAt: string
@@ -134,6 +136,8 @@ const editForm = reactive({
   contactName: '',
   contactPhone: '',
   pickupLocation: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
   status: 'ACTIVE' as 'ACTIVE' | 'RETURNED' | 'CANCELLED',
   sourceUrl: '',
   pin: '',
@@ -157,6 +161,8 @@ const singleForm = ref({
   contactName: '',
   contactPhone: '',
   pickupLocation: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
   pin: '1234',
 })
 const isSubmittingSingle = ref(false)
@@ -175,6 +181,8 @@ function openSingleModal(type: 'FOUND' | 'LOST') {
     contactName: '',
     contactPhone: '',
     pickupLocation: '',
+    latitude: null,
+    longitude: null,
     pin: '1234',
   }
   matchAlertInfo.value = null
@@ -294,6 +302,8 @@ const ocrShared = ref({
   contactName: '',
   contactPhone: '',
   pickupLocation: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
   sourceUrl: '',
   sourceImageUrl: '',
   pin: '1234',
@@ -615,6 +625,105 @@ onMounted(async () => {
   }
 })
 
+// ---------------- Google Maps & Geolocation Pinning Helpers ----------------
+function getGoogleMapsUrl(plate?: { pickupLocation?: string; province?: string; latitude?: number | null; longitude?: number | null } | null): string {
+  if (!plate) return '#'
+  if (plate.latitude && plate.longitude) {
+    return `https://www.google.com/maps/search/?api=1&query=${plate.latitude},${plate.longitude}`
+  }
+  const cleanLoc = (plate.pickupLocation || '').trim()
+  const cleanProv = (plate.province || '').trim()
+  const queryStr = [cleanLoc, cleanProv].filter(Boolean).join(' ')
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryStr || 'ประเทศไทย')}`
+}
+
+const isLocatingSingle = ref(false)
+function pinCurrentLocationForSingle() {
+  if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+    showToast('⚠️ อุปกรณ์ของคุณไม่รองรับ Geolocation')
+    return
+  }
+  isLocatingSingle.value = true
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      singleForm.value.latitude = pos.coords.latitude
+      singleForm.value.longitude = pos.coords.longitude
+      if (!singleForm.value.pickupLocation) {
+        singleForm.value.pickupLocation = `พิกัด GPS (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`
+      }
+      isLocatingSingle.value = false
+      showToast('📍 ปักหมุดพิกัด GPS สำเร็จ')
+    },
+    () => {
+      isLocatingSingle.value = false
+      showToast('⚠️ ไม่สามารถดึงพิกัดได้ กรุณาเปิด Location บนอุปกรณ์')
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  )
+}
+function clearLocationForSingle() {
+  singleForm.value.latitude = null
+  singleForm.value.longitude = null
+}
+
+const isLocatingEdit = ref(false)
+function pinCurrentLocationForEdit() {
+  if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+    showToast('⚠️ อุปกรณ์ของคุณไม่รองรับ Geolocation')
+    return
+  }
+  isLocatingEdit.value = true
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      editForm.latitude = pos.coords.latitude
+      editForm.longitude = pos.coords.longitude
+      if (!editForm.pickupLocation) {
+        editForm.pickupLocation = `พิกัด GPS (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`
+      }
+      isLocatingEdit.value = false
+      showToast('📍 ปักหมุดพิกัด GPS สำเร็จ')
+    },
+    () => {
+      isLocatingEdit.value = false
+      showToast('⚠️ ไม่สามารถดึงพิกัดได้ กรุณาเปิด Location บนอุปกรณ์')
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  )
+}
+function clearLocationForEdit() {
+  editForm.latitude = null
+  editForm.longitude = null
+}
+
+const isLocatingOcr = ref(false)
+function pinCurrentLocationForOcr() {
+  if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+    showToast('⚠️ อุปกรณ์ของคุณไม่รองรับ Geolocation')
+    return
+  }
+  isLocatingOcr.value = true
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      ocrShared.value.latitude = pos.coords.latitude
+      ocrShared.value.longitude = pos.coords.longitude
+      if (!ocrShared.value.pickupLocation) {
+        ocrShared.value.pickupLocation = `พิกัด GPS (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`
+      }
+      isLocatingOcr.value = false
+      showToast('📍 ปักหมุดพิกัด GPS สำเร็จ')
+    },
+    () => {
+      isLocatingOcr.value = false
+      showToast('⚠️ ไม่สามารถดึงพิกัดได้ กรุณาเปิด Location บนอุปกรณ์')
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  )
+}
+function clearLocationForOcr() {
+  ocrShared.value.latitude = null
+  ocrShared.value.longitude = null
+}
+
 // Social Sharing Helpers (Always Deep Links to this specific plate in our Web App)
 function getShareUrl(plate: PlateItem): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tabian.app'
@@ -790,6 +899,8 @@ function openEditPlateModal(plate: PlateItem, pin?: string) {
   editForm.contactName = plate.contactName
   editForm.contactPhone = plate.contactPhone
   editForm.pickupLocation = plate.pickupLocation
+  editForm.latitude = plate.latitude || null
+  editForm.longitude = plate.longitude || null
   editForm.status = plate.status
   editForm.sourceUrl = plate.sourceUrl || ''
   editForm.pin = pin || verifiedPin.value || ''
@@ -1289,12 +1400,25 @@ function formatDate(dateStr: string) {
 
             <!-- Location & Contact Info -->
             <div class="space-y-1.5 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-              <div class="flex items-start text-slate-700">
-                <span class="mr-1.5 text-sm shrink-0">📍</span>
-                <span class="leading-relaxed">
-                  <span class="font-medium text-slate-500">{{ plate.reportType === 'FOUND' ? 'จุดรับป้าย:' : 'จุดที่คาดว่าหลุดหาย:' }}</span>
-                  {{ plate.pickupLocation }}
-                </span>
+              <div class="flex items-start justify-between gap-1 text-slate-700">
+                <div class="flex items-start text-slate-700 min-w-0 pr-1">
+                  <span class="mr-1.5 text-sm shrink-0">📍</span>
+                  <span class="leading-relaxed">
+                    <span class="font-medium text-slate-500">{{ plate.reportType === 'FOUND' ? 'จุดรับป้าย:' : 'จุดที่คาดว่าหลุดหาย:' }}</span>
+                    {{ plate.pickupLocation }}
+                  </span>
+                </div>
+                <a 
+                  :href="getGoogleMapsUrl(plate)" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-[10px] font-bold shrink-0 ml-auto transition active:scale-95 shadow-2xs"
+                  title="เปิดดูตำแหน่งและนำทางใน Google Maps"
+                >
+                  <span>🗺️</span>
+                  <span>Google Maps</span>
+                  <span class="text-[9px] opacity-70">↗</span>
+                </a>
               </div>
               <div class="flex items-center text-slate-700">
                 <span class="mr-1.5 text-sm shrink-0">👤</span>
@@ -1634,15 +1758,33 @@ function formatDate(dateStr: string) {
 
           <!-- Pickup Location -->
           <div>
-            <label class="font-medium text-slate-700 block mb-1">
-              {{ singleForm.reportType === 'FOUND' ? 'สถานที่รับป้าย (จุดส่งมอบ)' : 'จุดที่ลุยน้ำแล้วหลุดหาย' }}
-            </label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-medium text-slate-700">
+                {{ singleForm.reportType === 'FOUND' ? 'สถานที่รับป้าย (จุดส่งมอบ)' : 'จุดที่ลุยน้ำแล้วหลุดหาย' }}
+              </label>
+              <button 
+                type="button" 
+                @click="pinCurrentLocationForSingle" 
+                :disabled="isLocatingSingle"
+                class="inline-flex items-center space-x-1 text-[11px] text-blue-600 hover:text-blue-800 font-bold bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-lg active:scale-95 transition"
+              >
+                <span>📍</span>
+                <span>{{ isLocatingSingle ? 'กำลังดึงพิกัด...' : 'ปักหมุด GPS ปัจจุบัน' }}</span>
+              </button>
+            </div>
             <input 
               v-model="singleForm.pickupLocation" 
               type="text" 
               placeholder="เช่น ป้อมตำรวจแยกดอยเขาควาย แม่สาย" 
               class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500"
             />
+            <div v-if="singleForm.latitude && singleForm.longitude" class="mt-1 flex items-center justify-between text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+              <div class="flex items-center space-x-1">
+                <span>📍 พิกัด GPS:</span>
+                <span class="font-mono font-medium">{{ singleForm.latitude.toFixed(6) }}, {{ singleForm.longitude.toFixed(6) }}</span>
+              </div>
+              <button type="button" @click="clearLocationForSingle" class="text-rose-500 hover:text-rose-700 font-bold">✕ ล้างพิกัด</button>
+            </div>
           </div>
 
           <!-- PIN 4 Digits -->
@@ -1781,8 +1923,19 @@ function formatDate(dateStr: string) {
 
             <!-- Shared Contact Info -->
             <div :class="ocrShared.reportType === 'LOST' ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'" class="p-2.5 rounded-xl border space-y-2">
-              <div :class="ocrShared.reportType === 'LOST' ? 'text-rose-900' : 'text-emerald-900'" class="font-bold text-[11px]">
-                {{ ocrShared.reportType === 'LOST' ? 'ข้อมูลจุดหลุดหาย / ผู้ตามหาร่วมกัน:' : 'ข้อมูลจุดรับร่วมกันทุกป้าย:' }}
+              <div class="flex items-center justify-between">
+                <div :class="ocrShared.reportType === 'LOST' ? 'text-rose-900' : 'text-emerald-900'" class="font-bold text-[11px]">
+                  {{ ocrShared.reportType === 'LOST' ? 'ข้อมูลจุดหลุดหาย / ผู้ตามหาร่วมกัน:' : 'ข้อมูลจุดรับร่วมกันทุกป้าย:' }}
+                </div>
+                <button 
+                  type="button" 
+                  @click="pinCurrentLocationForOcr" 
+                  :disabled="isLocatingOcr"
+                  class="inline-flex items-center space-x-1 text-[10px] text-blue-600 hover:text-blue-800 font-bold bg-white/90 hover:bg-white border border-blue-200 px-1.5 py-0.5 rounded-md active:scale-95 transition"
+                >
+                  <span>📍</span>
+                  <span>{{ isLocatingOcr ? 'กำลังดึงพิกัด...' : 'ปักหมุด GPS' }}</span>
+                </button>
               </div>
               <input 
                 v-model="ocrShared.pickupLocation" 
@@ -1790,6 +1943,10 @@ function formatDate(dateStr: string) {
                 :class="ocrShared.reportType === 'LOST' ? 'border-rose-300 focus:ring-rose-500' : 'border-emerald-300 focus:ring-emerald-500'"
                 class="w-full px-2.5 py-1.5 bg-white border rounded-lg" 
               />
+              <div v-if="ocrShared.latitude && ocrShared.longitude" class="flex items-center justify-between text-[10px] text-emerald-700 bg-white/80 px-2 py-0.5 rounded-md border border-emerald-200">
+                <span class="font-mono">📍 GPS: {{ ocrShared.latitude.toFixed(5) }}, {{ ocrShared.longitude.toFixed(5) }}</span>
+                <button type="button" @click="clearLocationForOcr" class="text-rose-500 font-bold">✕ ล้าง</button>
+              </div>
               <div class="grid grid-cols-2 gap-2">
                 <input 
                   v-model="ocrShared.contactName" 
@@ -2067,10 +2224,22 @@ function formatDate(dateStr: string) {
           </p>
         </div>
 
-        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1 text-xs">
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5 text-xs text-left">
           <div class="text-slate-500">ผู้ประสานงาน: <b class="text-slate-800">{{ selectedPlateToCall.contactName }}</b></div>
-          <div class="text-slate-500">จุดรับ: <span class="text-slate-800">{{ selectedPlateToCall.pickupLocation }}</span></div>
-          <div class="text-base font-bold font-mono text-emerald-700 pt-1">
+          <div class="flex items-start justify-between gap-1 text-slate-500">
+            <div>จุดรับ: <span class="text-slate-800">{{ selectedPlateToCall.pickupLocation }}</span></div>
+            <a 
+              :href="getGoogleMapsUrl(selectedPlateToCall)" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              class="text-blue-600 hover:text-blue-800 font-bold inline-flex items-center space-x-0.5 shrink-0 text-[11px]"
+              title="เปิดดูตำแหน่งและนำทางใน Google Maps"
+            >
+              <span>🗺️ แผนที่</span>
+              <span class="text-[9px]">↗</span>
+            </a>
+          </div>
+          <div class="text-base font-bold font-mono text-emerald-700 pt-1 text-center">
             {{ selectedPlateToCall.contactPhone }}
           </div>
         </div>
@@ -2167,6 +2336,17 @@ function formatDate(dateStr: string) {
 
           <!-- Direct Links -->
           <div class="flex flex-wrap gap-2 pt-1 border-t border-slate-200">
+            <a 
+              :href="getGoogleMapsUrl(selectedEvidencePlate)" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              class="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 flex items-center space-x-1 font-bold"
+              title="เปิดดูตำแหน่งและนำทางใน Google Maps"
+            >
+              <span>🗺️</span>
+              <span>Google Maps</span>
+            </a>
+
             <a 
               :href="selectedEvidencePlate.imageUrl" 
               target="_blank" 
@@ -2423,8 +2603,26 @@ function formatDate(dateStr: string) {
 
           <!-- Location -->
           <div>
-            <label class="font-medium text-slate-700 block mb-1">จุดรับป้าย / จุดที่หลุดหาย</label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-medium text-slate-700">จุดรับป้าย / จุดที่หลุดหาย</label>
+              <button 
+                type="button" 
+                @click="pinCurrentLocationForEdit" 
+                :disabled="isLocatingEdit"
+                class="inline-flex items-center space-x-1 text-[11px] text-blue-600 hover:text-blue-800 font-bold bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-lg active:scale-95 transition"
+              >
+                <span>📍</span>
+                <span>{{ isLocatingEdit ? 'กำลังดึงพิกัด...' : 'ปักหมุด GPS ปัจจุบัน' }}</span>
+              </button>
+            </div>
             <input v-model="editForm.pickupLocation" type="text" placeholder="เช่น ป้อมตำรวจแยกดอยเขาควาย" class="w-full px-3 py-2 rounded-xl border border-slate-300" required />
+            <div v-if="editForm.latitude && editForm.longitude" class="mt-1 flex items-center justify-between text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+              <div class="flex items-center space-x-1">
+                <span>📍 พิกัด GPS:</span>
+                <span class="font-mono font-medium">{{ editForm.latitude.toFixed(6) }}, {{ editForm.longitude.toFixed(6) }}</span>
+              </div>
+              <button type="button" @click="clearLocationForEdit" class="text-rose-500 hover:text-rose-700 font-bold">✕ ล้างพิกัด</button>
+            </div>
           </div>
 
           <!-- Contact Name & Phone -->

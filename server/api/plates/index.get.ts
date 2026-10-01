@@ -125,6 +125,8 @@ export default defineEventHandler(async (event) => {
         contactPhone: p.contactPhone,
         contactPhoneMasked: maskPhoneNumber(p.contactPhone),
         pickupLocation: p.pickupLocation,
+        latitude: p.latitude,
+        longitude: p.longitude,
         status: p.status,
         source: p.source,
         createdAt: p.createdAt,

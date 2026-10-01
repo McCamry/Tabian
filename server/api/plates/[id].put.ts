@@ -71,6 +71,8 @@ export default defineEventHandler(async (event) => {
         contactName,
         contactPhone,
         pickupLocation,
+        latitude: body.latitude !== undefined ? (body.latitude ? Number(body.latitude) : null) : plate.latitude,
+        longitude: body.longitude !== undefined ? (body.longitude ? Number(body.longitude) : null) : plate.longitude,
         status,
         sourceUrl: sourceUrl || null,
       },

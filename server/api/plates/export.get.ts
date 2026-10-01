@@ -57,6 +57,7 @@ export default defineEventHandler(async (event) => {
     'หมายเลขทะเบียน',
     'จังหวัด',
     'สถานที่รับ / จุดที่หลุดหาย',
+    'ลิงก์แผนที่ Google Maps',
     'ชื่อผู้ติดต่อ',
     'เบอร์โทรศัพท์ติดต่อ',
     'แหล่งที่มา',
@@ -70,6 +71,10 @@ export default defineEventHandler(async (event) => {
     const vehicleTypeStr = p.vehicleType === 'MOTORCYCLE' ? 'รถจักรยานยนต์' : 'รถยนต์'
     const sourceStr = p.source === 'IMAGE_OCR' ? 'AI สแกนกองป้าย' : p.source === 'SOCIAL_POST_TEXT' ? 'โพสต์โซเชียลมีเดีย' : 'กรอกข้อมูลเดี่ยว'
 
+    const mapsUrl = (p.latitude && p.longitude)
+      ? `https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((p.pickupLocation || '') + ' ' + (p.province || ''))}`
+
     return [
       csvCell(dateStr),
       csvCell(reportTypeStr),
@@ -79,6 +84,7 @@ export default defineEventHandler(async (event) => {
       csvCell(p.plateNumber),
       csvCell(p.province),
       csvCell(p.pickupLocation),
+      csvCell(mapsUrl),
       csvCell(p.contactName),
       csvCell(p.contactPhone),
       csvCell(sourceStr),

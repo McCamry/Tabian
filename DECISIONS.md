@@ -260,3 +260,25 @@
      - เมื่อคลิกรูปป้ายทะเบียนในการ์ด จะเปิดหน้าต่างดูรูปขยายใหญ่ความละเอียดสูง พร้อมปุ่มเปิดรูปขนาดเต็ม, โพสต์ต้นทาง, รูปแคปหน้าจอ, และปุ่มโทรออก
   4. **UTF-8 BOM CSV Export (/api/plates/export)**:
      - สร้าง Endpoint GET /api/plates/export ส่งออกข้อมูลตามตัวกรองปัจจุบันเป็นไฟล์ CSV พร้อมแนบ UTF-8 BOM (﻿) ทำให้เปิดใน Microsoft Excel, Apple Numbers หรือ Google Sheets ได้ถูกต้อง 100% โดยภาษาไทยไม่เป็นภาษาต่างดาว
+
+---
+
+## ADR-021: การผสานงานกับ Google Maps สำหรับการเปิดดูตำแหน่งและการนำทาง (Location & Google Maps Integration)
+- **สถานะ**: อนุมัติ (Approved)
+- **บริบท**:
+  - ผู้ประสบภัยและทีมงานกู้ภัยระบุความต้องการในการดูตำแหน่งจุดรับป้ายหรือจุดที่รถลุยน้ำแล้วป้ายหลุดหายบนแผนที่ และสามารถกดเพื่อเปิด Google Maps นำทางได้ทันที
+  - เดิมในระบบรองรับเฉพาะการกรอกข้อความ `pickupLocation` เป็นตัวอักษรธรรมดา และยังไม่มีปุ่มสำหรับเปิดแอปแผนที่นำทางโดยตรง
+- **การตัดสินใจ**:
+  1. **การสร้าง URL สำหรับ Google Maps (`getGoogleMapsUrl`)**:
+     - หากรายการป้ายทะเบียนมีพิกัด GPS ละติจูด/ลองจิจูด (`latitude`, `longitude`) จะสร้าง URL เปิดแผนที่ด้วยพิกัดจริงความแม่นยำสูง: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+     - หากไม่มีพิกัด GPS จะสร้าง URL ค้นหาด้วยชื่อสถานที่และจังหวัดที่ระบุ: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location + ' ' + province)}`
+  2. **การแสดงผลและการเชื่อมโยงบน UI (Frontend UI Linking)**:
+     - ติดตั้งปุ่ม `[🗺️ Google Maps ↗]` บนการ์ดป้ายทะเบียนทุกใบข้างข้อความจุดรับป้าย
+     - เพิ่มลิงก์ `[🗺️ แผนที่ ↗]` ในหน้าต่างยืนยันการโทร (Call Confirmation Modal)
+     - เพิ่มปุ่ม `[🗺️ Google Maps]` ในหน้าต่างขยายภาพหลักฐาน (Photo Evidence Lightbox)
+  3. **การปักหมุดพิกัด GPS ในฟอร์ม (Device Geolocation Pinning)**:
+     - เพิ่มปุ่ม `[📍 ปักหมุด GPS ปัจจุบัน]` ในฟอร์มลงรายการเดี่ยว (Single Entry), ฟอร์มแก้ไข (Edit Modal), และฟอร์มสแกนหลายป้ายด้วย AI (Batch OCR)
+     - เรียกใช้ HTML5 Geolocation API (`navigator.geolocation.getCurrentPosition`) พร้อม Fallback และ Badge แสดงพิกัด
+  4. **การส่งออกข้อมูลพิกัดและลิงก์แผนที่ใน CSV (CSV Google Maps Export)**:
+     - เพิ่มคอลัมน์ `'ลิงก์แผนที่ Google Maps'` ในไฟล์ CSV ของ `/api/plates/export`
+
