@@ -287,6 +287,7 @@ const isAnalyzingOcr = ref(false)
 const isSubmittingOcrBatch = ref(false)
 const ocrDetectedPlates = ref<any[]>([])
 const ocrShared = ref({
+  reportType: 'FOUND' as 'FOUND' | 'LOST',
   contactName: '',
   contactPhone: '',
   pickupLocation: '',
@@ -337,7 +338,9 @@ async function submitOcrBatch() {
     return
   }
   if (!ocrShared.value.contactName || !ocrShared.value.contactPhone || !ocrShared.value.pickupLocation) {
-    showToast('⚠️ กรุณาระบุชื่อผู้ประสานงาน เบอร์โทร และจุดรับป้าย')
+    showToast(ocrShared.value.reportType === 'LOST'
+      ? '⚠️ กรุณาระบุชื่อผู้ติดต่อ เบอร์โทร และจุด/ถนนที่ทำหลุดหาย'
+      : '⚠️ กรุณาระบุชื่อผู้ประสานงาน เบอร์โทร และจุดรับป้าย')
     return
   }
 
@@ -364,6 +367,7 @@ async function submitOcrBatch() {
       ocrImage.value = ''
       ocrShared.value.sourceUrl = ''
       ocrShared.value.sourceImageUrl = ''
+      ocrShared.value.reportType = 'FOUND'
       fetchPlates()
       fetchStats()
     }
@@ -454,9 +458,10 @@ async function submitSocialBatch() {
       body: {
         plates: socialParsedData.value.plates,
         sharedInfo: {
-          contactName: socialParsedData.value.contactName || 'ผู้ประสานงาน',
+          reportType: socialParsedData.value.reportType || 'FOUND',
+          contactName: socialParsedData.value.contactName || (socialParsedData.value.reportType === 'LOST' ? 'ผู้ตามหา' : 'ผู้ประสานงาน'),
           contactPhone: socialParsedData.value.contactPhone || '0812345678',
-          pickupLocation: socialParsedData.value.pickupLocation || 'จุดรวมป้ายน้ำท่วม',
+          pickupLocation: socialParsedData.value.pickupLocation || (socialParsedData.value.reportType === 'LOST' ? 'จุดที่หลุดหาย' : 'จุดรวมป้ายน้ำท่วม'),
           sourceUrl: socialSourceUrl.value.trim(),
           sourceImageUrl: socialImageUrl.value || null,
           imageUrl: socialImageUrl.value || null,
@@ -1607,17 +1612,41 @@ function formatDate(dateStr: string) {
           <div class="flex items-center space-x-2">
             <span class="text-2xl">📸</span>
             <div>
-              <h3 class="font-bold text-base text-slate-900">AI สแกนกองป้ายทะเบียน</h3>
-              <p class="text-[11px] text-slate-500">ถ่ายรูปเดียว สกัดหลายสิบป้ายด้วย Gemini</p>
+              <h3 class="font-bold text-base text-slate-900">AI สแกนป้ายทะเบียนหลายรายการ</h3>
+              <p class="text-[11px] text-slate-500">ถ่ายรูปกองป้ายหรือใบประกาศตามหา สกัดด้วย Gemini</p>
             </div>
           </div>
           <button @click="showOcrModal = false" class="text-slate-400 hover:text-slate-600 p-1 text-lg">✕</button>
         </div>
 
         <div class="space-y-3 text-xs">
+          <!-- Report Type Toggle (FOUND vs LOST) -->
+          <div class="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl">
+            <button 
+              type="button" 
+              @click="ocrShared.reportType = 'FOUND'"
+              :class="ocrShared.reportType === 'FOUND' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-slate-600 font-medium hover:text-slate-900'"
+              class="py-2 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition"
+            >
+              <span>🟢</span>
+              <span>พบป้าย (เจอ)</span>
+            </button>
+            <button 
+              type="button" 
+              @click="ocrShared.reportType = 'LOST'"
+              :class="ocrShared.reportType === 'LOST' ? 'bg-rose-600 text-white shadow-xs font-bold' : 'text-slate-600 font-medium hover:text-slate-900'"
+              class="py-2 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition"
+            >
+              <span>🔴</span>
+              <span>แจ้งตามหา (หา)</span>
+            </button>
+          </div>
+
           <!-- Step 1: Upload Photo -->
           <div>
-            <label class="font-medium text-slate-700 block mb-1">เลือกภาพถ่ายกองป้ายทะเบียน (5 - 30 แผ่น)</label>
+            <label class="font-medium text-slate-700 block mb-1">
+              {{ ocrShared.reportType === 'LOST' ? 'เลือกภาพถ่ายรายการป้ายตามหา / กระดานประกาศ' : 'เลือกภาพถ่ายกองป้ายทะเบียน (5 - 30 แผ่น)' }}
+            </label>
             <input 
               type="file" 
               accept="image/*" 
@@ -1645,7 +1674,8 @@ function formatDate(dateStr: string) {
           <button 
             v-if="ocrImage && !isAnalyzingOcr && ocrDetectedPlates.length === 0"
             @click="runOcrAnalysis" 
-            class="w-full py-3 rounded-2xl bg-emerald-600 text-white font-bold shadow-md hover:bg-emerald-700 flex items-center justify-center space-x-2 active:scale-98 transition"
+            :class="ocrShared.reportType === 'LOST' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'"
+            class="w-full py-3 rounded-2xl text-white font-bold shadow-md flex items-center justify-center space-x-2 active:scale-98 transition"
           >
             <span>🔍 ให้ AI เริ่มสแกนป้ายทั้งหมด</span>
           </button>
@@ -1682,12 +1712,29 @@ function formatDate(dateStr: string) {
             </div>
 
             <!-- Shared Contact Info -->
-            <div class="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 space-y-2">
-              <div class="font-bold text-emerald-900 text-[11px]">ข้อมูลจุดรับร่วมกันทุกป้าย:</div>
-              <input v-model="ocrShared.pickupLocation" placeholder="สถานที่รับป้าย (เช่น ป้อมกู้ภัยแม่สาย)" class="w-full px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg" />
+            <div :class="ocrShared.reportType === 'LOST' ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'" class="p-2.5 rounded-xl border space-y-2">
+              <div :class="ocrShared.reportType === 'LOST' ? 'text-rose-900' : 'text-emerald-900'" class="font-bold text-[11px]">
+                {{ ocrShared.reportType === 'LOST' ? 'ข้อมูลจุดหลุดหาย / ผู้ตามหาร่วมกัน:' : 'ข้อมูลจุดรับร่วมกันทุกป้าย:' }}
+              </div>
+              <input 
+                v-model="ocrShared.pickupLocation" 
+                :placeholder="ocrShared.reportType === 'LOST' ? 'จุด/ถนนที่น้ำท่วมทำหลุดหาย (เช่น สะพานนวรัฐ เชียงใหม่)' : 'สถานที่รับป้าย (เช่น ป้อมกู้ภัยแม่สาย)'" 
+                :class="ocrShared.reportType === 'LOST' ? 'border-rose-300 focus:ring-rose-500' : 'border-emerald-300 focus:ring-emerald-500'"
+                class="w-full px-2.5 py-1.5 bg-white border rounded-lg" 
+              />
               <div class="grid grid-cols-2 gap-2">
-                <input v-model="ocrShared.contactName" placeholder="ชื่อผู้ติดต่อ" class="px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg" />
-                <input v-model="ocrShared.contactPhone" placeholder="เบอร์โทร" class="px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg font-mono" />
+                <input 
+                  v-model="ocrShared.contactName" 
+                  :placeholder="ocrShared.reportType === 'LOST' ? 'ชื่อผู้แจ้ง / เจ้าของรถ' : 'ชื่อผู้ติดต่อ / กู้ภัย'" 
+                  :class="ocrShared.reportType === 'LOST' ? 'border-rose-300' : 'border-emerald-300'"
+                  class="px-2.5 py-1.5 bg-white border rounded-lg" 
+                />
+                <input 
+                  v-model="ocrShared.contactPhone" 
+                  placeholder="เบอร์โทร" 
+                  :class="ocrShared.reportType === 'LOST' ? 'border-rose-300' : 'border-emerald-300'"
+                  class="px-2.5 py-1.5 bg-white border rounded-lg font-mono" 
+                />
               </div>
             </div>
 
@@ -1738,10 +1785,11 @@ function formatDate(dateStr: string) {
             <button 
               @click="submitOcrBatch" 
               :disabled="isSubmittingOcrBatch"
-              class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md"
+              :class="ocrShared.reportType === 'LOST' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'"
+              class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-md"
             >
               <span v-if="isSubmittingOcrBatch" class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></span>
-              ยืนยันบันทึกทั้ง {{ ocrDetectedPlates.length }} ป้าย
+              ยืนยันบันทึกทั้ง {{ ocrDetectedPlates.length }} ป้าย ({{ ocrShared.reportType === 'LOST' ? 'แจ้งตามหา' : 'พบป้าย' }})
             </button>
           </div>
         </div>
@@ -1859,10 +1907,34 @@ function formatDate(dateStr: string) {
 
           <!-- Result Preview -->
           <div v-if="socialParsedData" class="space-y-2 pt-1 border-t border-slate-100">
-            <div class="p-2.5 bg-blue-50/80 rounded-xl border border-blue-200 text-xs space-y-1">
-              <div class="text-[10px] font-bold text-blue-800 uppercase tracking-wide">ข้อมูลเริ่มต้น (โพสต์หลัก)</div>
-              <div>📍 จุดรับหลัก: <b>{{ socialParsedData.pickupLocation }}</b></div>
-              <div>👤 ผู้ติดต่อหลัก: <b>{{ socialParsedData.contactName }}</b> ({{ socialParsedData.contactPhone }})</div>
+            <!-- Report Type Toggle for Social Data -->
+            <div class="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl">
+              <button 
+                type="button" 
+                @click="socialParsedData.reportType = 'FOUND'"
+                :class="socialParsedData.reportType === 'FOUND' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-slate-600 font-medium hover:text-slate-900'"
+                class="py-1.5 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition"
+              >
+                <span>🟢</span>
+                <span>โพสต์พบป้าย (เจอ)</span>
+              </button>
+              <button 
+                type="button" 
+                @click="socialParsedData.reportType = 'LOST'"
+                :class="socialParsedData.reportType === 'LOST' ? 'bg-rose-600 text-white shadow-xs font-bold' : 'text-slate-600 font-medium hover:text-slate-900'"
+                class="py-1.5 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition"
+              >
+                <span>🔴</span>
+                <span>โพสต์แจ้งตามหา (หา)</span>
+              </button>
+            </div>
+
+            <div :class="socialParsedData.reportType === 'LOST' ? 'bg-rose-50/80 border-rose-200' : 'bg-blue-50/80 border-blue-200'" class="p-2.5 rounded-xl border text-xs space-y-1">
+              <div :class="socialParsedData.reportType === 'LOST' ? 'text-rose-800' : 'text-blue-800'" class="text-[10px] font-bold uppercase tracking-wide">
+                ข้อมูลเริ่มต้น ({{ socialParsedData.reportType === 'LOST' ? 'โพสต์ตามหา' : 'โพสต์พบป้าย' }})
+              </div>
+              <div>📍 {{ socialParsedData.reportType === 'LOST' ? 'จุดที่หลุดหาย:' : 'จุดรับหลัก:' }} <b>{{ socialParsedData.pickupLocation }}</b></div>
+              <div>👤 {{ socialParsedData.reportType === 'LOST' ? 'ผู้แจ้ง/เจ้าของ:' : 'ผู้ประสานงานหลัก:' }} <b>{{ socialParsedData.contactName }}</b> <span v-if="socialParsedData.contactPhone">({{ socialParsedData.contactPhone }})</span></div>
             </div>
 
             <div class="flex items-center justify-between text-xs font-bold text-slate-700 pt-1">
@@ -1900,10 +1972,11 @@ function formatDate(dateStr: string) {
             <button 
               @click="submitSocialBatch" 
               :disabled="isSubmittingSocial"
-              class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md flex items-center justify-center space-x-1.5 active:scale-95 transition"
+              :class="socialParsedData.reportType === 'LOST' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'"
+              class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-md flex items-center justify-center space-x-1.5 active:scale-95 transition"
             >
               <span v-if="isSubmittingSocial" class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-              <span>ยืนยันบันทึกทั้ง {{ socialParsedData.plates.length }} รายการ</span>
+              <span>ยืนยันบันทึกทั้ง {{ socialParsedData.plates.length }} รายการ ({{ socialParsedData.reportType === 'LOST' ? 'แจ้งตามหา' : 'พบป้าย' }})</span>
             </button>
           </div>
         </div>

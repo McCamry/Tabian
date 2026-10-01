@@ -166,6 +166,7 @@
 {
   "success": true,
   "data": {
+    "reportType": "FOUND",
     "contactName": "พี่เด่น",
     "contactPhone": "0891112222",
     "pickupLocation": "เต็นท์หน้าเมืองจำลอง",
@@ -226,6 +227,7 @@
       "platePrefix": "กก", 
       "plateNumber": "9999", 
       "province": "ชลบุรี",
+      "reportType": "FOUND",
       "contactName": "ลุงเชียร",
       "contactPhone": "0813334444",
       "pickupLocation": "ป้อมตำรวจแยกสายสาม"
@@ -238,6 +240,7 @@
     }
   ],
   "sharedInfo": {
+    "reportType": "FOUND",
     "contactName": "พี่เด่น",
     "contactPhone": "0891112222",
     "pickupLocation": "เต็นท์หน้าเมืองจำลอง",

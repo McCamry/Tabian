@@ -58,9 +58,11 @@ export default defineEventHandler(async (event) => {
         const prov = (p.province || 'ระยอง').trim()
         const normalized = normalizePlate(prefix, num, prov)
 
+        const itemReportType = p.reportType || reportType
+
         const newPlate = await prisma.plate.create({
           data: {
-            reportType,
+            reportType: itemReportType,
             vehicleType: p.vehicleType || 'CAR',
             platePrefix: prefix,
             plateNumber: num,
@@ -80,6 +82,30 @@ export default defineEventHandler(async (event) => {
             batchImportId: batchImport.id,
           },
         })
+
+        // ตรวจสอบการจับคู่กับฝั่งตรงข้ามทันที (Smart Matching)
+        const oppositeType = itemReportType === 'FOUND' ? 'LOST' : 'FOUND'
+        const match = await prisma.plate.findFirst({
+          where: {
+            reportType: oppositeType,
+            plateNumber: num,
+            platePrefix: prefix,
+            province: prov,
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        })
+
+        if (match) {
+          await prisma.plate.update({
+            where: { id: newPlate.id },
+            data: { matchedPlateId: match.id },
+          }).catch(() => {})
+          await prisma.plate.update({
+            where: { id: match.id },
+            data: { matchedPlateId: newPlate.id },
+          }).catch(() => {})
+        }
 
         // บันทึก AuditLog รายป้าย
         await prisma.auditLog.create({

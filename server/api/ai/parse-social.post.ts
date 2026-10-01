@@ -17,9 +17,10 @@ export default defineEventHandler(async (event) => {
 
 จงวิเคราะห์ข้อความต่อไปนี้อย่างละเอียดรอบคอบ โดยอ่านทั้งโพสต์และทุกๆ คอมเมนต์:
 1. ข้อมูลหลักส่วนกลาง (Default Shared Info):
+   - reportType: 'FOUND' (ถ้าเนื้อหาเป็นการพบป้าย/เก็บป้ายได้/ส่งมอบ) หรือ 'LOST' (ถ้าเนื้อหาเป็นการตามหาป้าย/แจ้งป้ายหาย/ใครเจอบ้าง)
    - contactName: ชื่อผู้โพสต์หลัก หรือชื่อหน่วยงาน/กู้ภัยหลัก ถ้าไม่ระบุให้ใช้ 'ผู้ประสานงาน'
    - contactPhone: เบอร์โทรศัพท์ติดต่อหลัก (ตัดขีดให้เหลือตัวเลข 9-10 หลัก) ถ้าไม่พบให้เป็น ''
-   - pickupLocation: จุดรับป้ายหลัก หรือพิกัดหลัก
+   - pickupLocation: จุดรับป้ายหลัก หรือพิกัดที่หลุดหาย
 2. รายการป้ายทะเบียนทั้งหมดที่พบ (ทั้งในตัวโพสต์หลัก และในทุกๆ คอมเมนต์):
    สำหรับแต่ละป้ายใน array 'plates':
    - vehicleType: 'CAR' หรือ 'MOTORCYCLE' (ถ้ามีคำว่า มอไซค์, มอเตอร์ไซค์, เวฟ, สกู๊ปปี้ ให้เป็น 'MOTORCYCLE')
@@ -35,9 +36,10 @@ export default defineEventHandler(async (event) => {
 
 ตอบกลับเป็น JSON ในรูปแบบนี้เท่านั้น:
 {
+  "reportType": "FOUND",
   "contactName": "ชื่อผู้ติดต่อหลัก",
   "contactPhone": "0812345678",
-  "pickupLocation": "สถานที่รับป้ายหลัก",
+  "pickupLocation": "สถานที่รับป้ายหลัก หรือจุดที่ทำหลุดหาย",
   "plates": [
     {
       "vehicleType": "CAR",
@@ -46,7 +48,7 @@ export default defineEventHandler(async (event) => {
       "province": "ระยอง",
       "contactName": "ชื่อผู้ติดต่อของป้ายนี้",
       "contactPhone": "0812345678",
-      "pickupLocation": "จุดรับป้ายนี้"
+      "pickupLocation": "จุดรับป้ายนี้ หรือจุดที่หลุดหาย"
     }
   ]
 }`
